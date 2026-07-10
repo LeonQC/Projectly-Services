@@ -55,3 +55,32 @@ class Card(IdMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(30), default="backlog", nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class CardLink(IdMixin, TimestampMixin, Base):
+    __tablename__ = "card_links"
+    __table_args__ = (
+        CheckConstraint(
+            "relationship IN ("
+            "'is_blocked_by', "
+            "'blocks', "
+            "'is_cloned_by', "
+            "'clones', "
+            "'is_duplicated_by', "
+            "'duplicates', "
+            "'relates_to'"
+            ")",
+            name="ck_card_links_relationship",
+        ),
+        UniqueConstraint(
+            "source_card_id",
+            "target_card_id",
+            "relationship",
+            name="uq_card_links_source_target_relationship",
+        ),
+    )
+
+    source_card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    target_card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    relationship: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
