@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: projectly-postgres
+    environment:
+      POSTGRES_USER: projectly
+      POSTGRES_PASSWORD: projectly
+      POSTGRES_DB: projectly
+    ports:
+      - "5432:5432"
+    volumes:
+      - projectly_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  projectly_postgres_data:
