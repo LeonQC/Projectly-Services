@@ -22,6 +22,17 @@ def build_auth_response(user: User) -> AuthResponse:
     )
 
 
+def get_current_user(db: Session, user_id: int) -> UserResponse:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User is inactive")
+
+    return UserResponse.model_validate(user)
+
+
 def register_user(db: Session, payload: RegisterRequest) -> AuthResponse:
     existing_user = get_user_by_email(db, payload.email)
     if existing_user is not None:
