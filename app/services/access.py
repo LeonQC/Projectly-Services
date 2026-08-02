@@ -27,8 +27,12 @@ def get_comment_or_404(db: Session, comment_id: int) -> CardComment:
 
 
 def ensure_card_access(db: Session, user_id: int, card_id: int) -> Card:
+    from app.services.projects import ensure_project_access
+
     get_user_or_404(db, user_id)
-    return get_card_or_404(db, card_id)
+    card = get_card_or_404(db, card_id)
+    ensure_project_access(db, user_id, card.project_id)
+    return card
 
 
 def ensure_comment_access(db: Session, user_id: int, comment_id: int) -> CardComment:

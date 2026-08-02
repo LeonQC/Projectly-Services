@@ -1,0 +1,49 @@
+from fastapi import APIRouter, status
+
+from app.api.deps import AuthenticatedUserId, DbSession
+from app.core.responses import success_response
+from app.schemas.card import CardCreate, CardResponse, CardUpdate
+from app.services import cards as cards_service
+
+
+router = APIRouter(tags=["cards"])
+
+
+@router.get("/projects/{project_id}/cards")
+def list_project_cards(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    cards = cards_service.list_project_cards(db, project_id, current_user_id)
+    return success_response(data=[CardResponse.model_validate(card) for card in cards])
+
+
+@router.post("/projects/{project_id}/cards", status_code=status.HTTP_201_CREATED)
+def create_project_card(
+    project_id: int,
+    payload: CardCreate,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    card = cards_service.create_card(db, project_id, current_user_id, payload)
+    return success_response(data=CardResponse.model_validate(card), message="Card created")
+
+
+@router.get("/cards/{card_id}")
+def get_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    card = cards_service.get_card(db, card_id, current_user_id)
+    return success_response(data=CardResponse.model_validate(card))
+
+
+@router.patch("/cards/{card_id}")
+def update_card(
+    card_id: int,
+    payload: CardUpdate,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    card = cards_service.update_card(db, card_id, current_user_id, payload)
+    return success_response(data=CardResponse.model_validate(card), message="Card updated")
+
+
+@router.delete("/cards/{card_id}")
+def delete_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    cards_service.archive_card(db, card_id, current_user_id)
+    return success_response(message="Card deleted")
