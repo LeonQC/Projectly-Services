@@ -97,6 +97,18 @@ class CardAttachment(IdMixin, TimestampMixin, Base):
     uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
+class CardLabel(IdMixin, TimestampMixin, Base):
+    __tablename__ = "card_labels"
+    __table_args__ = (
+        UniqueConstraint("card_id", "name", name="uq_card_labels_card_name"),
+    )
+
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+
+
 class CardComment(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_comments"
 
