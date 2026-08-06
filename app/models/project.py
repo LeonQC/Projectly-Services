@@ -109,6 +109,17 @@ class CardLabel(IdMixin, TimestampMixin, Base):
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
+class CardMember(IdMixin, TimestampMixin, Base):
+    __tablename__ = "card_members"
+    __table_args__ = (
+        UniqueConstraint("card_id", "user_id", name="uq_card_members_card_user"),
+    )
+
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    added_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+
+
 class CardComment(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_comments"
 
