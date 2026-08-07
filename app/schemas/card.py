@@ -64,6 +64,7 @@ class CardResponse(BaseModel):
     id: int
     project_id: int
     epic_id: Optional[int]
+    sprint_id: Optional[int]
     title: str
     description: Optional[str]
     status: str

@@ -39,6 +39,24 @@ class Epic(IdMixin, TimestampMixin, Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
+class Sprint(IdMixin, TimestampMixin, Base):
+    __tablename__ = "sprints"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('planned', 'active', 'completed')",
+            name="ck_sprints_status",
+        ),
+    )
+
+    epic_id: Mapped[int] = mapped_column(ForeignKey("epics.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    goal: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="planned", nullable=False)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
 class Card(IdMixin, TimestampMixin, Base):
     __tablename__ = "cards"
     __table_args__ = (
@@ -50,6 +68,7 @@ class Card(IdMixin, TimestampMixin, Base):
 
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), index=True, nullable=False)
     epic_id: Mapped[Optional[int]] = mapped_column(ForeignKey("epics.id"), index=True, nullable=True)
+    sprint_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sprints.id"), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="backlog", nullable=False)

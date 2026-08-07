@@ -10,6 +10,7 @@ from app.api.routers import (
     comments,
     epics,
     projects,
+    sprints,
     workspaces,
 )
 from app.core.config import settings
@@ -24,6 +25,7 @@ app.include_router(cards.router, prefix=settings.api_prefix)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(comments.router, prefix=settings.api_prefix)
 app.include_router(epics.router, prefix=settings.api_prefix)
+app.include_router(sprints.router, prefix=settings.api_prefix)
 app.include_router(workspaces.router, prefix=settings.api_prefix)
 app.include_router(projects.router, prefix=settings.api_prefix)
 
