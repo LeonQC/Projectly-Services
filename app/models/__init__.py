@@ -10,6 +10,7 @@ from app.models.project import (
     Epic,
     Project,
     ProjectGuest,
+    Sprint,
 )
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -26,6 +27,7 @@ __all__ = [
     "Notification",
     "Project",
     "ProjectGuest",
+    "Sprint",
     "User",
     "Workspace",
     "WorkspaceMember",
