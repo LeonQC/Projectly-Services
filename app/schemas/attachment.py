@@ -32,6 +32,7 @@ class CardAttachmentResponse(BaseModel):
 
     id: int
     card_id: int
+    comment_id: Optional[int]
     file_name: str
     file_url: str
     file_type: Optional[str]

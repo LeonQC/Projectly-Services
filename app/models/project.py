@@ -109,6 +109,7 @@ class CardAttachment(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_attachments"
 
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    comment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("card_comments.id"), index=True, nullable=True)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_url: Mapped[str] = mapped_column(String(500), nullable=False)
     file_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
