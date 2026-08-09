@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
-import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+import jwt
 from fastapi import HTTPException, status
 
 from app.core.config import settings
 
 
 PASSWORD_HASH_ALGORITHM = "pbkdf2_sha256"
-
-
-def _base64_url_encode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-
-
-def _base64_url_decode(value: str) -> bytes:
-    padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(f"{value}{padding}".encode("ascii"))
+ACCESS_TOKEN_ALGORITHM = "HS256"
 
 
 def hash_password(password: str) -> str:
@@ -61,17 +52,9 @@ def create_access_token(user_id: int) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {
         "sub": str(user_id),
-        "exp": int(expires_at.timestamp()),
+        "exp": expires_at,
     }
-    encoded_payload = _base64_url_encode(
-        json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    )
-    signature = hmac.new(
-        settings.auth_secret_key.encode("utf-8"),
-        encoded_payload.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    return f"{encoded_payload}.{_base64_url_encode(signature)}"
+    return jwt.encode(payload, settings.auth_secret_key, algorithm=ACCESS_TOKEN_ALGORITHM)
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
@@ -81,26 +64,8 @@ def decode_access_token(token: str) -> dict[str, Any]:
     )
 
     try:
-        encoded_payload, encoded_signature = token.split(".", 1)
-    except ValueError as exc:
+        return jwt.decode(token, settings.auth_secret_key, algorithms=[ACCESS_TOKEN_ALGORITHM])
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired") from exc
+    except jwt.InvalidTokenError as exc:
         raise credentials_error from exc
-
-    expected_signature = hmac.new(
-        settings.auth_secret_key.encode("utf-8"),
-        encoded_payload.encode("ascii"),
-        hashlib.sha256,
-    ).digest()
-    actual_signature = _base64_url_decode(encoded_signature)
-    if not hmac.compare_digest(actual_signature, expected_signature):
-        raise credentials_error
-
-    try:
-        payload = json.loads(_base64_url_decode(encoded_payload))
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise credentials_error from exc
-
-    expires_at = payload.get("exp")
-    if not isinstance(expires_at, int) or expires_at < int(datetime.now(timezone.utc).timestamp()):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
-
-    return payload
