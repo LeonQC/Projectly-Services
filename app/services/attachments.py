@@ -25,7 +25,7 @@ def list_card_attachments(db: Session, card_id: int, current_user_id: int) -> li
     ensure_card_access(db, current_user_id, card_id)
     statement = (
         select(CardAttachment)
-        .where(CardAttachment.card_id == card_id)
+        .where(CardAttachment.card_id == card_id, CardAttachment.comment_id.is_(None))
         .order_by(CardAttachment.created_at.asc(), CardAttachment.id.asc())
     )
     return list(db.scalars(statement).all())
@@ -40,6 +40,7 @@ def create_card_attachment(
     ensure_card_access(db, current_user_id, card_id)
     attachment = CardAttachment(
         card_id=card_id,
+        comment_id=None,
         file_name=payload.file_name,
         file_url=payload.file_url,
         file_type=payload.file_type,

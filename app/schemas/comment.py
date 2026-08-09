@@ -2,9 +2,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.attachment import CardAttachmentCreate, CardAttachmentResponse
+
 
 class CardCommentCreate(BaseModel):
     body: str = Field(min_length=1)
+    attachments: list[CardAttachmentCreate] = Field(default_factory=list)
 
 
 class CardCommentUpdate(BaseModel):
@@ -19,5 +22,6 @@ class CardCommentResponse(BaseModel):
     author_id: int
     body: str
     archived: bool
+    attachments: list[CardAttachmentResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
