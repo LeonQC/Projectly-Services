@@ -6,7 +6,7 @@ from app.schemas.attachment import CardAttachmentCreate, CardAttachmentResponse
 from app.services import attachments as attachments_service
 
 
-router = APIRouter(tags=["attachments"])
+router = APIRouter(tags=["cards-detail"])
 
 
 @router.get("/cards/{card_id}/attachments")

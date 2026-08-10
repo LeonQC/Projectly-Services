@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.project import Card, Epic, Sprint
 from app.schemas.sprint import CardSprintUpdate, SprintCreate, SprintUpdate
 from app.services.cards import ensure_card_access
+from app.services.cards import permanently_delete_card_records
 from app.services.epics import ensure_epic_access, get_epic_or_404
 from app.services.projects import ensure_project_access
 
@@ -73,6 +74,31 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, payload: Sp
 def archive_sprint(db: Session, sprint_id: int, current_user_id: int) -> None:
     sprint = ensure_sprint_access(db, current_user_id, sprint_id)
     sprint.archived = True
+    db.commit()
+
+
+def restore_sprint(db: Session, sprint_id: int, current_user_id: int) -> Sprint:
+    sprint = db.get(Sprint, sprint_id)
+    if sprint is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
+    epic = get_epic_or_404(db, sprint.epic_id)
+    ensure_project_access(db, current_user_id, epic.project_id)
+    sprint.archived = False
+    db.commit()
+    db.refresh(sprint)
+    return sprint
+
+
+def permanently_delete_sprint(db: Session, sprint_id: int, current_user_id: int) -> None:
+    sprint = db.get(Sprint, sprint_id)
+    if sprint is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
+    epic = get_epic_or_404(db, sprint.epic_id)
+    ensure_project_access(db, current_user_id, epic.project_id)
+
+    card_ids = list(db.scalars(select(Card.id).where(Card.sprint_id == sprint_id)).all())
+    permanently_delete_card_records(db, card_ids)
+    db.delete(sprint)
     db.commit()
 
 

@@ -1,11 +1,11 @@
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import Card, Epic
-from app.schemas.card import CardCreate, CardUpdate
+from app.models.project import Card, CardActivity, CardAttachment, CardComment, CardLabel, CardLink, CardMember, Epic, Sprint
+from app.schemas.card import CardCreate, CardDetailResponse, CardMove, CardResponse, CardUpdate
 from app.services.activities import create_card_activity
 from app.services.projects import ensure_project_access
 
@@ -98,6 +98,51 @@ def update_card(db: Session, card_id: int, current_user_id: int, payload: CardUp
     return card
 
 
+def move_card(db: Session, card_id: int, current_user_id: int, payload: CardMove) -> Card:
+    card = ensure_card_access(db, current_user_id, card_id)
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "sprint_id" in update_data and update_data["sprint_id"] is not None:
+        sprint = db.get(Sprint, update_data["sprint_id"])
+        if sprint is None or sprint.archived:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sprint not found")
+        if card.epic_id != sprint.epic_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Card does not belong to sprint epic")
+
+    changed_fields: list[str] = []
+    for field, value in update_data.items():
+        if getattr(card, field) != value:
+            setattr(card, field, value)
+            changed_fields.append(field)
+
+    if changed_fields:
+        create_card_activity(
+            db,
+            card_id=card.id,
+            actor_id=current_user_id,
+            action="card_moved",
+            metadata={"fields": changed_fields},
+        )
+
+    db.commit()
+    db.refresh(card)
+    return card
+
+
+def get_card_detail(db: Session, card_id: int, current_user_id: int) -> CardDetailResponse:
+    from app.services import attachments, card_labels, card_links, card_members, comments
+
+    card = get_card(db, card_id, current_user_id)
+    return CardDetailResponse(
+        card=CardResponse.model_validate(card),
+        labels=card_labels.list_card_labels(db, card_id, current_user_id),
+        members=card_members.list_card_members(db, card_id, current_user_id),
+        attachments=attachments.list_card_attachments(db, card_id, current_user_id),
+        comments=comments.list_card_comments(db, card_id, current_user_id),
+        links=card_links.list_card_links(db, card_id, current_user_id),
+    )
+
+
 def archive_card(db: Session, card_id: int, current_user_id: int) -> None:
     card = ensure_card_access(db, current_user_id, card_id)
     card.archived = True
@@ -108,4 +153,48 @@ def archive_card(db: Session, card_id: int, current_user_id: int) -> None:
         action="card_deleted",
         metadata={"project_id": card.project_id},
     )
+    db.commit()
+
+
+def restore_card(db: Session, card_id: int, current_user_id: int) -> Card:
+    card = db.get(Card, card_id)
+    if card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    ensure_project_access(db, current_user_id, card.project_id)
+    card.archived = False
+    create_card_activity(
+        db,
+        card_id=card.id,
+        actor_id=current_user_id,
+        action="card_restored",
+        metadata={"project_id": card.project_id},
+    )
+    db.commit()
+    db.refresh(card)
+    return card
+
+
+def permanently_delete_card_records(db: Session, card_ids: list[int]) -> None:
+    if not card_ids:
+        return
+
+    db.execute(delete(CardAttachment).where(CardAttachment.card_id.in_(card_ids)))
+    db.execute(delete(CardComment).where(CardComment.card_id.in_(card_ids)))
+    db.execute(delete(CardLabel).where(CardLabel.card_id.in_(card_ids)))
+    db.execute(delete(CardMember).where(CardMember.card_id.in_(card_ids)))
+    db.execute(
+        delete(CardLink).where(
+            (CardLink.source_card_id.in_(card_ids)) | (CardLink.target_card_id.in_(card_ids))
+        )
+    )
+    db.execute(delete(CardActivity).where(CardActivity.card_id.in_(card_ids)))
+    db.execute(delete(Card).where(Card.id.in_(card_ids)))
+
+
+def permanently_delete_card(db: Session, card_id: int, current_user_id: int) -> None:
+    card = db.get(Card, card_id)
+    if card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+    ensure_project_access(db, current_user_id, card.project_id)
+    permanently_delete_card_records(db, [card_id])
     db.commit()

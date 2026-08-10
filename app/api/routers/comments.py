@@ -6,7 +6,7 @@ from app.schemas.comment import CardCommentCreate, CardCommentUpdate
 from app.services import comments as comments_service
 
 
-router = APIRouter(tags=["comments"])
+router = APIRouter(tags=["cards-detail"])
 
 
 @router.get("/cards/{card_id}/comments")

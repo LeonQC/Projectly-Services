@@ -47,3 +47,15 @@ def update_epic(
 def delete_epic(epic_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     epics_service.archive_epic(db, epic_id, current_user_id)
     return success_response(message="Epic deleted")
+
+
+@router.patch("/epics/{epic_id}/restore")
+def restore_epic(epic_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    epic = epics_service.restore_epic(db, epic_id, current_user_id)
+    return success_response(data=EpicResponse.model_validate(epic), message="Epic restored")
+
+
+@router.delete("/epics/{epic_id}/permanent")
+def permanently_delete_epic(epic_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    epics_service.permanently_delete_epic(db, epic_id, current_user_id)
+    return success_response(message="Epic permanently deleted")

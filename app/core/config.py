@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     auth_secret_key: str = "change-me-in-production"
     access_token_expire_minutes: int = 60 * 24
     password_hash_iterations: int = 210_000
+    google_client_id: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

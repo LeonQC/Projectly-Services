@@ -1,7 +1,9 @@
 from fastapi import HTTPException, status
-from sqlalchemy import exists, or_, select
+from sqlalchemy import delete, exists, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.notification import Invitation
+from app.models.project import Project
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.access import get_user_or_404
@@ -95,4 +97,48 @@ def update_workspace(
 def archive_workspace(db: Session, workspace_id: int, current_user_id: int) -> None:
     workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
     workspace.archived = True
+    db.commit()
+
+
+def list_deleted_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
+    get_user_or_404(db, current_user_id)
+    member_workspace_ids = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == current_user_id)
+    statement = (
+        select(Workspace)
+        .where(
+            Workspace.archived.is_(True),
+            or_(
+                Workspace.owner_id == current_user_id,
+                Workspace.id.in_(member_workspace_ids),
+            ),
+        )
+        .order_by(Workspace.updated_at.desc(), Workspace.id.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
+def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> Workspace:
+    workspace = db.get(Workspace, workspace_id)
+    if workspace is None or workspace.owner_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    workspace.archived = False
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+
+def permanently_delete_workspace(db: Session, workspace_id: int, current_user_id: int) -> None:
+    from app.services.projects import permanently_delete_project_records
+
+    workspace = db.get(Workspace, workspace_id)
+    if workspace is None or workspace.owner_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    project_ids = list(db.scalars(select(Project.id).where(Project.workspace_id == workspace_id)).all())
+    for project_id in project_ids:
+        permanently_delete_project_records(db, project_id)
+
+    db.execute(delete(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id))
+    db.execute(delete(Invitation).where(Invitation.target_type == "workspace", Invitation.target_id == workspace_id))
+    db.execute(delete(Workspace).where(Workspace.id == workspace_id))
     db.commit()
