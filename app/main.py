@@ -8,6 +8,7 @@ from app.api.routers import (
     card_members,
     cards,
     comments,
+    development,
     epics,
     notifications,
     projects,
@@ -29,6 +30,7 @@ app.include_router(card_links.router, prefix=settings.api_prefix)
 app.include_router(card_members.router, prefix=settings.api_prefix)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(comments.router, prefix=settings.api_prefix)
+app.include_router(development.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 
 
