@@ -105,6 +105,30 @@ class CardLink(IdMixin, TimestampMixin, Base):
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
 
 
+class CardGitHubLink(IdMixin, TimestampMixin, Base):
+    __tablename__ = "card_github_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "card_id",
+            "repo_owner",
+            "repo_name",
+            "branch_name",
+            "pull_request_number",
+            "commit_sha",
+            name="uq_card_github_links_target",
+        ),
+    )
+
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    repo_owner: Mapped[str] = mapped_column(String(120), nullable=False)
+    repo_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    branch_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    pull_request_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+
+
 class CardAttachment(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_attachments"
 
