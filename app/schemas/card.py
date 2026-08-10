@@ -3,6 +3,12 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.attachment import CardAttachmentResponse
+from app.schemas.card_label import CardLabelResponse
+from app.schemas.card_link import CardLinkResponse
+from app.schemas.card_member import CardMemberResponse
+from app.schemas.comment import CardCommentResponse
+
 
 CardStatus = Literal["backlog", "todo", "in_progress", "done"]
 
@@ -58,6 +64,12 @@ class CardUpdate(BaseModel):
         return normalized_description or None
 
 
+class CardMove(BaseModel):
+    status: Optional[CardStatus] = None
+    position: Optional[int] = None
+    sprint_id: Optional[int] = None
+
+
 class CardResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,3 +84,12 @@ class CardResponse(BaseModel):
     archived: bool
     created_at: datetime
     updated_at: datetime
+
+
+class CardDetailResponse(BaseModel):
+    card: CardResponse
+    labels: list[CardLabelResponse]
+    members: list[CardMemberResponse]
+    attachments: list[CardAttachmentResponse]
+    comments: list[CardCommentResponse]
+    links: list[CardLinkResponse]

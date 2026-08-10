@@ -2,13 +2,19 @@ from fastapi import APIRouter, status
 
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
-from app.schemas.member import MemberInviteRequest, ProjectMemberResponse
+from app.schemas.member import ProjectMemberResponse
 from app.schemas.project import ProjectResponse, ProjectUpdate
 from app.services import members as members_service
 from app.services import projects as projects_service
 
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+@router.get("/deleted")
+def list_deleted_projects(db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    projects = projects_service.list_deleted_projects(db, current_user_id)
+    return success_response(data=[ProjectResponse.model_validate(project) for project in projects])
 
 
 @router.get("/{project_id}")
@@ -34,21 +40,22 @@ def delete_project(project_id: int, db: DbSession, current_user_id: Authenticate
     return success_response(message="Project deleted")
 
 
+@router.patch("/{project_id}/restore")
+def restore_project(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    project = projects_service.restore_project(db, project_id, current_user_id)
+    return success_response(data=ProjectResponse.model_validate(project), message="Project restored")
+
+
+@router.delete("/{project_id}/permanent")
+def permanently_delete_project(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    projects_service.permanently_delete_project(db, project_id, current_user_id)
+    return success_response(message="Project permanently deleted")
+
+
 @router.get("/{project_id}/members")
 def list_project_members(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     members = members_service.list_project_members(db, project_id, current_user_id)
     return success_response(data=[ProjectMemberResponse.model_validate(member) for member in members])
-
-
-@router.post("/{project_id}/members", status_code=status.HTTP_201_CREATED)
-def invite_project_member(
-    project_id: int,
-    payload: MemberInviteRequest,
-    db: DbSession,
-    current_user_id: AuthenticatedUserId,
-) -> dict:
-    member = members_service.create_project_member(db, project_id, current_user_id, payload)
-    return success_response(data=ProjectMemberResponse.model_validate(member), message="Project member invited")
 
 
 @router.delete("/members/{member_id}")

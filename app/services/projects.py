@@ -1,8 +1,21 @@
 from fastapi import HTTPException, status
-from sqlalchemy import exists, select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.orm import Session
 
-from app.models.project import Project, ProjectGuest
+from app.models.notification import Invitation
+from app.models.project import (
+    Card,
+    CardActivity,
+    CardAttachment,
+    CardComment,
+    CardLabel,
+    CardLink,
+    CardMember,
+    Epic,
+    Project,
+    ProjectGuest,
+    Sprint,
+)
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
 from app.services.workspaces import ensure_workspace_access, user_can_access_workspace
@@ -88,4 +101,64 @@ def update_project(
 def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     project = ensure_project_access(db, current_user_id, project_id)
     project.archived = True
+    db.commit()
+
+
+def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
+    get_user_or_404(db, current_user_id)
+    statement = (
+        select(Project)
+        .where(Project.archived.is_(True))
+        .order_by(Project.updated_at.desc(), Project.id.desc())
+    )
+    projects = [
+        project
+        for project in db.scalars(statement).all()
+        if user_can_access_workspace(db, current_user_id, project.workspace_id)
+    ]
+    return projects
+
+
+def restore_project(db: Session, project_id: int, current_user_id: int) -> Project:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_workspace_access(db, current_user_id, project.workspace_id)
+    project.archived = False
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+def permanently_delete_project_records(db: Session, project_id: int) -> None:
+    card_ids = list(db.scalars(select(Card.id).where(Card.project_id == project_id)).all())
+    if card_ids:
+        db.execute(delete(CardAttachment).where(CardAttachment.card_id.in_(card_ids)))
+        db.execute(delete(CardComment).where(CardComment.card_id.in_(card_ids)))
+        db.execute(delete(CardLabel).where(CardLabel.card_id.in_(card_ids)))
+        db.execute(delete(CardMember).where(CardMember.card_id.in_(card_ids)))
+        db.execute(
+            delete(CardLink).where(
+                (CardLink.source_card_id.in_(card_ids)) | (CardLink.target_card_id.in_(card_ids))
+            )
+        )
+        db.execute(delete(CardActivity).where(CardActivity.card_id.in_(card_ids)))
+        db.execute(delete(Card).where(Card.id.in_(card_ids)))
+
+    epic_ids = list(db.scalars(select(Epic.id).where(Epic.project_id == project_id)).all())
+    if epic_ids:
+        db.execute(delete(Sprint).where(Sprint.epic_id.in_(epic_ids)))
+        db.execute(delete(Epic).where(Epic.id.in_(epic_ids)))
+
+    db.execute(delete(ProjectGuest).where(ProjectGuest.project_id == project_id))
+    db.execute(delete(Invitation).where(Invitation.target_type == "project", Invitation.target_id == project_id))
+    db.execute(delete(Project).where(Project.id == project_id))
+
+
+def permanently_delete_project(db: Session, project_id: int, current_user_id: int) -> None:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    ensure_workspace_access(db, current_user_id, project.workspace_id)
+    permanently_delete_project_records(db, project_id)
     db.commit()

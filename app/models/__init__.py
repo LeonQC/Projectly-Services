@@ -1,4 +1,4 @@
-from app.models.notification import Notification
+from app.models.notification import Invitation, Notification
 from app.models.project import (
     Card,
     CardActivity,
@@ -24,6 +24,7 @@ __all__ = [
     "CardLink",
     "CardMember",
     "Epic",
+    "Invitation",
     "Notification",
     "Project",
     "ProjectGuest",

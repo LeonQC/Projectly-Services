@@ -127,7 +127,7 @@ def list_project_members(db: Session, project_id: int, current_user_id: int) -> 
                 project_id=project_id,
                 membership_type="workspace",
                 user=user,
-                role=member.role,
+                role="admin",
                 member_id=None,
                 created_at=member.created_at,
                 updated_at=member.updated_at,

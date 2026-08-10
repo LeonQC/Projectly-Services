@@ -91,6 +91,15 @@ def create_card_comment(
         action="comment_added",
         metadata={"comment_id": comment.id, "attachment_count": len(attachments)},
     )
+    from app.services.notifications import create_comment_mention_notifications
+
+    create_comment_mention_notifications(
+        db,
+        card_id=card_id,
+        comment_id=comment.id,
+        author_id=author_id,
+        body=body,
+    )
     db.commit()
     db.refresh(comment)
     for attachment in attachments:

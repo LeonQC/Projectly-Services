@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
-from app.schemas.card import CardCreate, CardResponse, CardUpdate
+from app.schemas.card import CardCreate, CardDetailResponse, CardMove, CardResponse, CardUpdate
 from app.services import cards as cards_service
 
 
@@ -32,6 +32,12 @@ def get_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) 
     return success_response(data=CardResponse.model_validate(card))
 
 
+@router.get("/cards/{card_id}/detail")
+def get_card_detail(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    detail = cards_service.get_card_detail(db, card_id, current_user_id)
+    return success_response(data=CardDetailResponse.model_validate(detail))
+
+
 @router.patch("/cards/{card_id}")
 def update_card(
     card_id: int,
@@ -43,7 +49,30 @@ def update_card(
     return success_response(data=CardResponse.model_validate(card), message="Card updated")
 
 
+@router.patch("/cards/{card_id}/move")
+def move_card(
+    card_id: int,
+    payload: CardMove,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    card = cards_service.move_card(db, card_id, current_user_id, payload)
+    return success_response(data=CardResponse.model_validate(card), message="Card moved")
+
+
 @router.delete("/cards/{card_id}")
 def delete_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     cards_service.archive_card(db, card_id, current_user_id)
     return success_response(message="Card deleted")
+
+
+@router.patch("/cards/{card_id}/restore")
+def restore_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    card = cards_service.restore_card(db, card_id, current_user_id)
+    return success_response(data=CardResponse.model_validate(card), message="Card restored")
+
+
+@router.delete("/cards/{card_id}/permanent")
+def permanently_delete_card(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    cards_service.permanently_delete_card(db, card_id, current_user_id)
+    return success_response(message="Card permanently deleted")

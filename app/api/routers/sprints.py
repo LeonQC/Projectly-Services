@@ -50,6 +50,18 @@ def delete_sprint(sprint_id: int, db: DbSession, current_user_id: AuthenticatedU
     return success_response(message="Sprint deleted")
 
 
+@router.patch("/sprints/{sprint_id}/restore")
+def restore_sprint(sprint_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    sprint = sprints_service.restore_sprint(db, sprint_id, current_user_id)
+    return success_response(data=SprintResponse.model_validate(sprint), message="Sprint restored")
+
+
+@router.delete("/sprints/{sprint_id}/permanent")
+def permanently_delete_sprint(sprint_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    sprints_service.permanently_delete_sprint(db, sprint_id, current_user_id)
+    return success_response(message="Sprint permanently deleted")
+
+
 @router.get("/sprints/{sprint_id}/cards")
 def list_sprint_cards(sprint_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     cards = sprints_service.list_sprint_cards(db, sprint_id, current_user_id)

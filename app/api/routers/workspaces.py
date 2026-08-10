@@ -2,7 +2,7 @@ from fastapi import APIRouter, status
 
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
-from app.schemas.member import MemberInviteRequest, WorkspaceMemberResponse
+from app.schemas.member import WorkspaceMemberResponse
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.workspace import WorkspaceCreate, WorkspaceResponse, WorkspaceUpdate
 from app.services import members as members_service
@@ -23,6 +23,12 @@ def list_workspaces(db: DbSession, current_user_id: AuthenticatedUserId) -> dict
 def create_workspace(payload: WorkspaceCreate, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     workspace = workspaces_service.create_workspace(db, current_user_id, payload)
     return success_response(data=WorkspaceResponse.model_validate(workspace), message="Workspace created")
+
+
+@router.get("/deleted")
+def list_deleted_workspaces(db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    workspaces = workspaces_service.list_deleted_workspaces(db, current_user_id)
+    return success_response(data=[WorkspaceResponse.model_validate(workspace) for workspace in workspaces])
 
 
 @router.get("/{workspace_id}")
@@ -48,21 +54,22 @@ def delete_workspace(workspace_id: int, db: DbSession, current_user_id: Authenti
     return success_response(message="Workspace deleted")
 
 
+@router.patch("/{workspace_id}/restore")
+def restore_workspace(workspace_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    workspace = workspaces_service.restore_workspace(db, workspace_id, current_user_id)
+    return success_response(data=WorkspaceResponse.model_validate(workspace), message="Workspace restored")
+
+
+@router.delete("/{workspace_id}/permanent")
+def permanently_delete_workspace(workspace_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    workspaces_service.permanently_delete_workspace(db, workspace_id, current_user_id)
+    return success_response(message="Workspace permanently deleted")
+
+
 @router.get("/{workspace_id}/members")
 def list_workspace_members(workspace_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     members = members_service.list_workspace_members(db, workspace_id, current_user_id)
     return success_response(data=[WorkspaceMemberResponse.model_validate(member) for member in members])
-
-
-@router.post("/{workspace_id}/members", status_code=status.HTTP_201_CREATED)
-def invite_workspace_member(
-    workspace_id: int,
-    payload: MemberInviteRequest,
-    db: DbSession,
-    current_user_id: AuthenticatedUserId,
-) -> dict:
-    member = members_service.create_workspace_member(db, workspace_id, current_user_id, payload)
-    return success_response(data=WorkspaceMemberResponse.model_validate(member), message="Workspace member invited")
 
 
 @router.delete("/members/{member_id}")
