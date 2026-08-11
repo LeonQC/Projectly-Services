@@ -2,7 +2,12 @@ from fastapi import APIRouter, status
 
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
-from app.schemas.development import CardDevelopmentResponse, CardGitHubLinkCreate, CardGitHubLinkResponse
+from app.schemas.development import (
+    CardDevelopmentResponse,
+    CardGitHubLinkCreate,
+    CardGitHubLinkResponse,
+    CardGitHubLinkUpdate,
+)
 from app.services import development as development_service
 
 
@@ -24,6 +29,17 @@ def create_card_github_link(
 ) -> dict:
     github_link = development_service.create_card_github_link(db, card_id, current_user_id, payload)
     return success_response(data=CardGitHubLinkResponse.model_validate(github_link), message="GitHub link created")
+
+
+@router.patch("/development/github-links/{github_link_id}")
+def update_card_github_link(
+    github_link_id: int,
+    payload: CardGitHubLinkUpdate,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    github_link = development_service.update_card_github_link(db, github_link_id, current_user_id, payload)
+    return success_response(data=CardGitHubLinkResponse.model_validate(github_link), message="GitHub link updated")
 
 
 @router.delete("/development/github-links/{github_link_id}")
