@@ -39,6 +39,16 @@ def list_project_cards(db: Session, project_id: int, current_user_id: int) -> li
     return list(db.scalars(statement).all())
 
 
+def list_archived_project_cards(db: Session, project_id: int, current_user_id: int) -> list[Card]:
+    ensure_project_access(db, current_user_id, project_id)
+    statement = (
+        select(Card)
+        .where(Card.project_id == project_id, Card.archived.is_(True))
+        .order_by(Card.updated_at.desc(), Card.created_at.desc(), Card.id.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
 def create_card(db: Session, project_id: int, current_user_id: int, payload: CardCreate) -> Card:
     ensure_project_access(db, current_user_id, project_id)
     if payload.epic_id is not None:
