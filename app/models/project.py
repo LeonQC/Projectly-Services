@@ -170,7 +170,6 @@ class CardComment(IdMixin, TimestampMixin, Base):
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
     author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class CardActivity(IdMixin, Base):

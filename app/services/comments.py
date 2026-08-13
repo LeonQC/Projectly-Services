@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.project import CardAttachment, CardComment
@@ -16,7 +16,6 @@ def build_comment_response(comment: CardComment, attachments: list[CardAttachmen
         card_id=comment.card_id,
         author_id=comment.author_id,
         body=comment.body,
-        archived=comment.archived,
         attachments=[CardAttachmentResponse.model_validate(attachment) for attachment in attachments],
         created_at=comment.created_at,
         updated_at=comment.updated_at,
@@ -44,7 +43,7 @@ def list_card_comments(db: Session, card_id: int, current_user_id: int) -> list[
     ensure_card_access(db, current_user_id, card_id)
     statement = (
         select(CardComment)
-        .where(CardComment.card_id == card_id, CardComment.archived.is_(False))
+        .where(CardComment.card_id == card_id)
         .order_by(CardComment.created_at.asc(), CardComment.id.asc())
     )
     comments = list(db.scalars(statement).all())
@@ -132,12 +131,14 @@ def update_card_comment(
     return build_comment_response(comment, attachments)
 
 
-def archive_card_comment(db: Session, comment_id: int, current_user_id: int) -> None:
+def delete_card_comment(db: Session, comment_id: int, current_user_id: int) -> None:
     comment = ensure_comment_access(db, current_user_id, comment_id)
-    comment.archived = True
+    card_id = comment.card_id
+    db.execute(delete(CardAttachment).where(CardAttachment.comment_id == comment.id))
+    db.delete(comment)
     create_card_activity(
         db,
-        card_id=comment.card_id,
+        card_id=card_id,
         actor_id=current_user_id,
         action="comment_deleted",
         metadata={"comment_id": comment.id},

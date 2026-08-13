@@ -21,7 +21,7 @@ def get_card_or_404(db: Session, card_id: int) -> Card:
 
 def get_comment_or_404(db: Session, comment_id: int) -> CardComment:
     comment = db.get(CardComment, comment_id)
-    if comment is None or comment.archived:
+    if comment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
     return comment
 
