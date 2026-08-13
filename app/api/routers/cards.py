@@ -15,6 +15,12 @@ def list_project_cards(project_id: int, db: DbSession, current_user_id: Authenti
     return success_response(data=[CardResponse.model_validate(card) for card in cards])
 
 
+@router.get("/projects/{project_id}/cards/archived")
+def list_archived_project_cards(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    cards = cards_service.list_archived_project_cards(db, project_id, current_user_id)
+    return success_response(data=[CardResponse.model_validate(card) for card in cards])
+
+
 @router.post("/projects/{project_id}/cards", status_code=status.HTTP_201_CREATED)
 def create_project_card(
     project_id: int,
