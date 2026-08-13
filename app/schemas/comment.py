@@ -21,7 +21,6 @@ class CardCommentResponse(BaseModel):
     card_id: int
     author_id: int
     body: str
-    archived: bool
     attachments: list[CardAttachmentResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

@@ -39,5 +39,5 @@ def update_card_comment(
 
 @router.delete("/comments/{comment_id}")
 def delete_card_comment(comment_id: int, db: DbSession, current_user_id: CurrentUserId) -> dict:
-    comments_service.archive_card_comment(db, comment_id, current_user_id)
+    comments_service.delete_card_comment(db, comment_id, current_user_id)
     return success_response(message="Comment deleted")
