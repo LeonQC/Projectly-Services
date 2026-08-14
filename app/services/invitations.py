@@ -1,12 +1,12 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
 
 from app.models.notification import Invitation
-from app.models.project import ProjectGuest
+from app.models.project import Project, ProjectGuest
 from app.models.user import User
-from app.models.workspace import WorkspaceMember
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.auth import UserResponse
 from app.schemas.invitation import InvitationCreate, InvitationResponse
 from app.services.access import get_user_or_404
@@ -25,11 +25,21 @@ def get_invitee(db: Session, payload: InvitationCreate) -> User:
     return user
 
 
-def build_invitation_response(invitation: Invitation, inviter: User, invitee: User) -> InvitationResponse:
+def get_invitation_target_name(db: Session, invitation: Invitation) -> str:
+    if invitation.target_type == "workspace":
+        workspace = db.get(Workspace, invitation.target_id)
+        return workspace.name if workspace is not None else "Unknown workspace"
+
+    project = db.get(Project, invitation.target_id)
+    return project.name if project is not None else "Unknown project"
+
+
+def build_invitation_response(db: Session, invitation: Invitation, inviter: User, invitee: User) -> InvitationResponse:
     return InvitationResponse(
         id=invitation.id,
         target_type=invitation.target_type,
         target_id=invitation.target_id,
+        target_name=get_invitation_target_name(db, invitation),
         inviter_id=invitation.inviter_id,
         invitee_id=invitation.invitee_id,
         role=invitation.role,
@@ -73,7 +83,7 @@ def create_workspace_invitation(
 
     db.refresh(invitation)
     inviter = get_user_or_404(db, current_user_id)
-    return build_invitation_response(invitation, inviter, invitee)
+    return build_invitation_response(db, invitation, inviter, invitee)
 
 
 def create_project_invitation(
@@ -109,7 +119,7 @@ def create_project_invitation(
 
     db.refresh(invitation)
     inviter = get_user_or_404(db, current_user_id)
-    return build_invitation_response(invitation, inviter, invitee)
+    return build_invitation_response(db, invitation, inviter, invitee)
 
 
 def list_my_invitations(db: Session, current_user_id: int) -> list[InvitationResponse]:
@@ -125,7 +135,7 @@ def list_my_invitations(db: Session, current_user_id: int) -> list[InvitationRes
     )
     invitations: list[InvitationResponse] = []
     for invitation, inviter, invitee in db.execute(statement).all():
-        invitations.append(build_invitation_response(invitation, inviter, invitee))
+        invitations.append(build_invitation_response(db, invitation, inviter, invitee))
     return invitations
 
 
@@ -139,16 +149,28 @@ def get_my_pending_invitation(db: Session, invitation_id: int, current_user_id: 
 def accept_invitation(db: Session, invitation_id: int, current_user_id: int) -> InvitationResponse:
     invitation = get_my_pending_invitation(db, invitation_id, current_user_id)
     if invitation.target_type == "workspace":
-        member = WorkspaceMember(
-            workspace_id=invitation.target_id,
-            user_id=current_user_id,
-            role=invitation.role,
-        )
-        db.add(member)
+        if not user_can_access_workspace(db, current_user_id, invitation.target_id):
+            member = WorkspaceMember(
+                workspace_id=invitation.target_id,
+                user_id=current_user_id,
+                role=invitation.role,
+            )
+            db.add(member)
     else:
-        guest = ProjectGuest(project_id=invitation.target_id, user_id=current_user_id)
-        db.add(guest)
+        project = get_project_or_404(db, invitation.target_id)
+        if not user_can_access_project(db, current_user_id, project):
+            guest = ProjectGuest(project_id=invitation.target_id, user_id=current_user_id)
+            db.add(guest)
 
+    db.execute(
+        delete(Invitation).where(
+            Invitation.id != invitation.id,
+            Invitation.target_type == invitation.target_type,
+            Invitation.target_id == invitation.target_id,
+            Invitation.invitee_id == invitation.invitee_id,
+            Invitation.status == "accepted",
+        )
+    )
     invitation.status = "accepted"
     from app.services.notifications import mark_invitation_notification_read
 
@@ -162,11 +184,20 @@ def accept_invitation(db: Session, invitation_id: int, current_user_id: int) -> 
     db.refresh(invitation)
     inviter = get_user_or_404(db, invitation.inviter_id)
     invitee = get_user_or_404(db, invitation.invitee_id)
-    return build_invitation_response(invitation, inviter, invitee)
+    return build_invitation_response(db, invitation, inviter, invitee)
 
 
 def decline_invitation(db: Session, invitation_id: int, current_user_id: int) -> InvitationResponse:
     invitation = get_my_pending_invitation(db, invitation_id, current_user_id)
+    db.execute(
+        delete(Invitation).where(
+            Invitation.id != invitation.id,
+            Invitation.target_type == invitation.target_type,
+            Invitation.target_id == invitation.target_id,
+            Invitation.invitee_id == invitation.invitee_id,
+            Invitation.status == "declined",
+        )
+    )
     invitation.status = "declined"
     from app.services.notifications import mark_invitation_notification_read
 
@@ -175,4 +206,4 @@ def decline_invitation(db: Session, invitation_id: int, current_user_id: int) ->
     db.refresh(invitation)
     inviter = get_user_or_404(db, invitation.inviter_id)
     invitee = get_user_or_404(db, invitation.invitee_id)
-    return build_invitation_response(invitation, inviter, invitee)
+    return build_invitation_response(db, invitation, inviter, invitee)

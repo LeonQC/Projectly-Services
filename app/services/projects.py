@@ -16,6 +16,7 @@ from app.models.project import (
     ProjectGuest,
     Sprint,
 )
+from app.models.workspace import Workspace
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
 from app.services.workspaces import ensure_workspace_access, user_can_access_workspace
@@ -117,6 +118,27 @@ def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
         if user_can_access_workspace(db, current_user_id, project.workspace_id)
     ]
     return projects
+
+
+def list_guest_projects(db: Session, current_user_id: int) -> list[tuple[Project, str]]:
+    get_user_or_404(db, current_user_id)
+    statement = (
+        select(Project, Workspace.name)
+        .join(ProjectGuest, ProjectGuest.project_id == Project.id)
+        .join(Workspace, Workspace.id == Project.workspace_id)
+        .where(
+            ProjectGuest.user_id == current_user_id,
+            Project.archived.is_(False),
+            Workspace.archived.is_(False),
+        )
+        .order_by(Workspace.name.asc(), Project.position.asc(), Project.created_at.asc(), Project.id.asc())
+    )
+    rows = db.execute(statement).all()
+    return [
+        (project, workspace_name)
+        for project, workspace_name in rows
+        if not user_can_access_workspace(db, current_user_id, project.workspace_id)
+    ]
 
 
 def restore_project(db: Session, project_id: int, current_user_id: int) -> Project:

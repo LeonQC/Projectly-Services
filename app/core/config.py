@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     database_url: str = "postgresql+psycopg://projectly:projectly@localhost:5432/projectly"
     auth_secret_key: str = "change-me-in-production"
-    access_token_expire_minutes: int = 60 * 24
+    access_token_expire_minutes: int = 120
     password_hash_iterations: int = 210_000
     google_client_id: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"

@@ -7,6 +7,7 @@ from app.schemas.development import (
     CardGitHubLinkCreate,
     CardGitHubLinkResponse,
     CardGitHubLinkUpdate,
+    ProjectDevelopmentResponse,
 )
 from app.services import development as development_service
 
@@ -18,6 +19,12 @@ router = APIRouter(tags=["development"])
 def get_card_development(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     development = development_service.get_card_development(db, card_id, current_user_id)
     return success_response(data=CardDevelopmentResponse.model_validate(development))
+
+
+@router.get("/projects/{project_id}/development")
+def get_project_development(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    development = development_service.get_project_development(db, project_id, current_user_id)
+    return success_response(data=ProjectDevelopmentResponse.model_validate(development))
 
 
 @router.post("/cards/{card_id}/development/github-links", status_code=status.HTTP_201_CREATED)

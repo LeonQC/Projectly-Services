@@ -33,6 +33,7 @@ class InvitationResponse(BaseModel):
     id: int
     target_type: InvitationTargetType
     target_id: int
+    target_name: str
     inviter_id: int
     invitee_id: int
     role: str
