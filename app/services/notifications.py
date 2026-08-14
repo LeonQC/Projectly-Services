@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.notification import Invitation, Notification
-from app.models.project import CardComment
+from app.models.project import Card, CardComment, Project
 from app.models.user import User
 from app.schemas.auth import UserResponse
 from app.schemas.invitation import InvitationResponse
@@ -74,14 +74,21 @@ def build_notification_response(
     invitation_inviter: User | None = None,
     invitation_invitee: User | None = None,
     comment: CardComment | None = None,
+    comment_card: Card | None = None,
+    comment_project: Project | None = None,
 ) -> NotificationResponse:
     invitation_response: InvitationResponse | None = None
     if invitation is not None and invitation_inviter is not None and invitation_invitee is not None:
         invitation_response = build_invitation_response(invitation, invitation_inviter, invitation_invitee)
 
     comment_mention: CommentMentionTarget | None = None
-    if comment is not None:
-        comment_mention = CommentMentionTarget(card_id=comment.card_id, comment_id=comment.id)
+    if comment is not None and comment_card is not None and comment_project is not None:
+        comment_mention = CommentMentionTarget(
+            workspace_id=comment_project.workspace_id,
+            project_id=comment_card.project_id,
+            card_id=comment.card_id,
+            comment_id=comment.id,
+        )
 
     return NotificationResponse(
         id=notification.id,
@@ -116,6 +123,8 @@ def list_my_notifications(db: Session, current_user_id: int) -> list[Notificatio
         invitation_inviter: User | None = None
         invitation_invitee: User | None = None
         comment: CardComment | None = None
+        comment_card: Card | None = None
+        comment_project: Project | None = None
 
         if notification.source_type == "invitation" and notification.source_id is not None:
             invitation = db.get(Invitation, notification.source_id)
@@ -125,6 +134,10 @@ def list_my_notifications(db: Session, current_user_id: int) -> list[Notificatio
 
         if notification.source_type == "card_comment" and notification.source_id is not None:
             comment = db.get(CardComment, notification.source_id)
+            if comment is not None:
+                comment_card = db.get(Card, comment.card_id)
+                if comment_card is not None:
+                    comment_project = db.get(Project, comment_card.project_id)
 
         responses.append(
             build_notification_response(
@@ -134,6 +147,8 @@ def list_my_notifications(db: Session, current_user_id: int) -> list[Notificatio
                 invitation_inviter=invitation_inviter,
                 invitation_invitee=invitation_invitee,
                 comment=comment,
+                comment_card=comment_card,
+                comment_project=comment_project,
             )
         )
     return responses
@@ -150,7 +165,23 @@ def mark_notification_read(db: Session, notification_id: int, current_user_id: i
         db.refresh(notification)
 
     actor = db.get(User, notification.actor_id) if notification.actor_id is not None else None
-    return build_notification_response(notification=notification, actor=actor)
+    comment: CardComment | None = None
+    comment_card: Card | None = None
+    comment_project: Project | None = None
+    if notification.source_type == "card_comment" and notification.source_id is not None:
+        comment = db.get(CardComment, notification.source_id)
+        if comment is not None:
+            comment_card = db.get(Card, comment.card_id)
+            if comment_card is not None:
+                comment_project = db.get(Project, comment_card.project_id)
+
+    return build_notification_response(
+        notification=notification,
+        actor=actor,
+        comment=comment,
+        comment_card=comment_card,
+        comment_project=comment_project,
+    )
 
 
 def mark_invitation_notification_read(db: Session, invitation_id: int, current_user_id: int) -> None:
