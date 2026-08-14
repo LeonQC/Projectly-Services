@@ -8,6 +8,8 @@ from app.schemas.invitation import InvitationResponse
 
 
 class CommentMentionTarget(BaseModel):
+    workspace_id: int
+    project_id: int
     card_id: int
     comment_id: int
 
