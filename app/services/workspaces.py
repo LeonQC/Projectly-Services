@@ -48,6 +48,28 @@ def ensure_workspace_owner(db: Session, user_id: int, workspace_id: int) -> Work
     return workspace
 
 
+def user_can_admin_workspace(db: Session, user_id: int, workspace_id: int) -> bool:
+    workspace = get_workspace_or_404(db, workspace_id)
+    if workspace.owner_id == user_id:
+        return True
+
+    statement = select(
+        exists().where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user_id,
+            WorkspaceMember.role.in_(("admin", "owner")),
+        )
+    )
+    return bool(db.scalar(statement))
+
+
+def ensure_workspace_admin(db: Session, user_id: int, workspace_id: int) -> Workspace:
+    workspace = ensure_workspace_access(db, user_id, workspace_id)
+    if not user_can_admin_workspace(db, user_id, workspace_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace admin access required")
+    return workspace
+
+
 def list_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
     get_user_or_404(db, current_user_id)
     member_workspace_ids = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == current_user_id)

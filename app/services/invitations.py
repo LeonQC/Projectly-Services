@@ -12,7 +12,7 @@ from app.schemas.invitation import InvitationCreate, InvitationResponse
 from app.services.access import get_user_or_404
 from app.services.auth import get_user_by_email
 from app.services.projects import get_project_or_404, user_can_access_project
-from app.services.workspaces import ensure_workspace_owner, user_can_access_workspace
+from app.services.workspaces import ensure_workspace_admin, user_can_access_workspace
 
 
 def get_invitee(db: Session, payload: InvitationCreate) -> User:
@@ -57,7 +57,7 @@ def create_workspace_invitation(
     current_user_id: int,
     payload: InvitationCreate,
 ) -> InvitationResponse:
-    workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
+    workspace = ensure_workspace_admin(db, current_user_id, workspace_id)
     invitee = get_invitee(db, payload)
     if invitee.id == workspace.owner_id or user_can_access_workspace(db, invitee.id, workspace_id):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has workspace access")
@@ -93,7 +93,7 @@ def create_project_invitation(
     payload: InvitationCreate,
 ) -> InvitationResponse:
     project = get_project_or_404(db, project_id)
-    ensure_workspace_owner(db, current_user_id, project.workspace_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     invitee = get_invitee(db, payload)
     if user_can_access_project(db, invitee.id, project):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has project access")

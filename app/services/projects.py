@@ -19,7 +19,7 @@ from app.models.project import (
 from app.models.workspace import Workspace
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
-from app.services.workspaces import ensure_workspace_access, user_can_access_workspace
+from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace, user_can_admin_workspace
 
 
 def get_project_or_404(db: Session, project_id: int) -> Project:
@@ -66,7 +66,7 @@ def create_project(
     current_user_id: int,
     payload: ProjectCreate,
 ) -> Project:
-    ensure_workspace_access(db, current_user_id, workspace_id)
+    ensure_workspace_admin(db, current_user_id, workspace_id)
     project = Project(
         workspace_id=workspace_id,
         name=payload.name,
@@ -90,6 +90,7 @@ def update_project(
     payload: ProjectUpdate,
 ) -> Project:
     project = ensure_project_access(db, current_user_id, project_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(project, field, value)
@@ -101,6 +102,7 @@ def update_project(
 
 def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     project = ensure_project_access(db, current_user_id, project_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     project.archived = True
     db.commit()
 
@@ -115,7 +117,7 @@ def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
     projects = [
         project
         for project in db.scalars(statement).all()
-        if user_can_access_workspace(db, current_user_id, project.workspace_id)
+        if user_can_admin_workspace(db, current_user_id, project.workspace_id)
     ]
     return projects
 
@@ -145,7 +147,7 @@ def restore_project(db: Session, project_id: int, current_user_id: int) -> Proje
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    ensure_workspace_access(db, current_user_id, project.workspace_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     project.archived = False
     db.commit()
     db.refresh(project)
@@ -181,6 +183,6 @@ def permanently_delete_project(db: Session, project_id: int, current_user_id: in
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    ensure_workspace_access(db, current_user_id, project.workspace_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     permanently_delete_project_records(db, project_id)
     db.commit()
