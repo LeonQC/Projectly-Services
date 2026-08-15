@@ -62,3 +62,7 @@ class ProjectResponse(BaseModel):
     archived: bool
     created_at: datetime
     updated_at: datetime
+
+
+class GuestProjectResponse(ProjectResponse):
+    workspace_name: str

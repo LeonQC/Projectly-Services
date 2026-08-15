@@ -3,7 +3,7 @@ from fastapi import APIRouter, status
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
 from app.schemas.member import ProjectMemberResponse
-from app.schemas.project import ProjectResponse, ProjectUpdate
+from app.schemas.project import GuestProjectResponse, ProjectResponse, ProjectUpdate
 from app.services import members as members_service
 from app.services import projects as projects_service
 
@@ -15,6 +15,22 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 def list_deleted_projects(db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     projects = projects_service.list_deleted_projects(db, current_user_id)
     return success_response(data=[ProjectResponse.model_validate(project) for project in projects])
+
+
+@router.get("/guest")
+def list_guest_projects(db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    projects = projects_service.list_guest_projects(db, current_user_id)
+    return success_response(
+        data=[
+            GuestProjectResponse.model_validate(
+                {
+                    **ProjectResponse.model_validate(project).model_dump(),
+                    "workspace_name": workspace_name,
+                }
+            )
+            for project, workspace_name in projects
+        ]
+    )
 
 
 @router.get("/{project_id}")

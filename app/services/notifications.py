@@ -68,6 +68,7 @@ def create_comment_mention_notifications(
 
 def build_notification_response(
     *,
+    db: Session,
     notification: Notification,
     actor: User | None,
     invitation: Invitation | None = None,
@@ -79,7 +80,7 @@ def build_notification_response(
 ) -> NotificationResponse:
     invitation_response: InvitationResponse | None = None
     if invitation is not None and invitation_inviter is not None and invitation_invitee is not None:
-        invitation_response = build_invitation_response(invitation, invitation_inviter, invitation_invitee)
+        invitation_response = build_invitation_response(db, invitation, invitation_inviter, invitation_invitee)
 
     comment_mention: CommentMentionTarget | None = None
     if comment is not None and comment_card is not None and comment_project is not None:
@@ -141,6 +142,7 @@ def list_my_notifications(db: Session, current_user_id: int) -> list[Notificatio
 
         responses.append(
             build_notification_response(
+                db=db,
                 notification=notification,
                 actor=actor,
                 invitation=invitation,
@@ -176,6 +178,7 @@ def mark_notification_read(db: Session, notification_id: int, current_user_id: i
                 comment_project = db.get(Project, comment_card.project_id)
 
     return build_notification_response(
+        db=db,
         notification=notification,
         actor=actor,
         comment=comment,

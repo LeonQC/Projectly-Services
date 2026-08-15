@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import ProjectGuest
 from app.models.user import User
-from app.models.workspace import WorkspaceMember
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.auth import UserResponse
 from app.schemas.member import MemberInviteRequest, ProjectMemberResponse, WorkspaceMemberResponse
 from app.services.access import get_user_or_404
@@ -196,6 +196,24 @@ def delete_project_member(db: Session, member_id: int, current_user_id: int) -> 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project member not found")
 
     project = get_project_or_404(db, guest.project_id)
-    ensure_workspace_owner(db, current_user_id, project.workspace_id)
+    if guest.user_id != current_user_id:
+        workspace = db.get(Workspace, project.workspace_id)
+        workspace_member = db.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == project.workspace_id,
+                WorkspaceMember.user_id == current_user_id,
+            )
+        )
+        can_remove_guest = (
+            workspace is not None
+            and workspace.owner_id == current_user_id
+        ) or (
+            workspace_member is not None
+            and workspace_member.role in {"admin", "owner"}
+        )
+
+        if not can_remove_guest:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Project admin access required")
+
     db.delete(guest)
     db.commit()

@@ -3,6 +3,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.card import CardResponse
+
 
 class CardGitHubLinkCreate(BaseModel):
     repo_owner: str = Field(min_length=1, max_length=120)
@@ -123,3 +125,12 @@ class CardDevelopmentResponse(BaseModel):
     branches: list[GitHubBranchResponse]
     pull_requests: list[GitHubPullRequestResponse]
     development_status: DevelopmentStatusResponse
+
+
+class ProjectCardDevelopmentResponse(BaseModel):
+    card: CardResponse
+    development: CardDevelopmentResponse
+
+
+class ProjectDevelopmentResponse(BaseModel):
+    cards: list[ProjectCardDevelopmentResponse]

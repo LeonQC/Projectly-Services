@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.project import CardGitHubLink
+from app.models.project import Card
 from app.schemas.development import (
     CardDevelopmentResponse,
     CardGitHubLinkCreate,
@@ -20,9 +22,35 @@ from app.schemas.development import (
     GitHubBranchResponse,
     GitHubCommitResponse,
     GitHubPullRequestResponse,
+    ProjectCardDevelopmentResponse,
+    ProjectDevelopmentResponse,
 )
+from app.schemas.card import CardResponse
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
+from app.services.projects import ensure_project_access
+
+
+def build_github_api_url(*path_parts: str, query: dict[str, str | int] | None = None) -> str:
+    encoded_path = "/".join(quote(str(part).strip(), safe="") for part in path_parts)
+    url = f"https://api.github.com/{encoded_path}"
+    if query:
+        return f"{url}?{urlencode(query)}"
+    return url
+
+
+def fetch_github_json(url: str) -> Any | None:
+    request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Projectly"})
+
+    try:
+        with urlopen(request, timeout=8) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None
+        return None
+    except (UnicodeEncodeError, URLError, TimeoutError, json.JSONDecodeError):
+        return None
 
 
 def get_github_link_or_404(db: Session, github_link_id: int) -> CardGitHubLink:
@@ -148,19 +176,16 @@ def fetch_recent_commits_for_link(github_link: CardGitHubLink) -> list[GitHubCom
     if not github_link.branch_name:
         return []
 
-    params = urlencode({"sha": github_link.branch_name, "per_page": 5})
-    url = f"https://api.github.com/repos/{github_link.repo_owner}/{github_link.repo_name}/commits?{params}"
-    request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Projectly"})
-
-    try:
-        with urlopen(request, timeout=8) as response:
-            commits = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        if exc.code == 404:
-            return []
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub commits request failed") from exc
-    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub commits request failed") from exc
+    url = build_github_api_url(
+        "repos",
+        github_link.repo_owner,
+        github_link.repo_name,
+        "commits",
+        query={"sha": github_link.branch_name, "per_page": 5},
+    )
+    commits = fetch_github_json(url)
+    if not isinstance(commits, list):
+        return []
 
     recent_commits: list[GitHubCommitResponse] = []
     for commit_item in commits:
@@ -172,18 +197,17 @@ def fetch_linked_commit_for_link(github_link: CardGitHubLink) -> GitHubCommitRes
     if not github_link.commit_sha:
         return None
 
-    url = f"https://api.github.com/repos/{github_link.repo_owner}/{github_link.repo_name}/commits/{github_link.commit_sha}"
-    request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Projectly"})
-
-    try:
-        with urlopen(request, timeout=8) as response:
-            commit_item = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        if exc.code == 404:
-            return None
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub commit request failed") from exc
-    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub commit request failed") from exc
+    commit_item = fetch_github_json(
+        build_github_api_url(
+            "repos",
+            github_link.repo_owner,
+            github_link.repo_name,
+            "commits",
+            github_link.commit_sha,
+        )
+    )
+    if not isinstance(commit_item, dict):
+        return None
 
     return build_commit_response(github_link=github_link, commit_item=commit_item, branch_name=github_link.branch_name)
 
@@ -192,18 +216,17 @@ def fetch_branch_for_link(github_link: CardGitHubLink) -> GitHubBranchResponse |
     if not github_link.branch_name:
         return None
 
-    url = f"https://api.github.com/repos/{github_link.repo_owner}/{github_link.repo_name}/branches/{github_link.branch_name}"
-    request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Projectly"})
-
-    try:
-        with urlopen(request, timeout=8) as response:
-            branch = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        if exc.code == 404:
-            return None
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub branch request failed") from exc
-    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub branch request failed") from exc
+    branch = fetch_github_json(
+        build_github_api_url(
+            "repos",
+            github_link.repo_owner,
+            github_link.repo_name,
+            "branches",
+            github_link.branch_name,
+        )
+    )
+    if not isinstance(branch, dict):
+        return None
 
     commit = branch.get("commit") or {}
     return GitHubBranchResponse(
@@ -219,21 +242,17 @@ def fetch_pull_request_for_link(github_link: CardGitHubLink) -> GitHubPullReques
     if github_link.pull_request_number is None:
         return None
 
-    url = (
-        f"https://api.github.com/repos/{github_link.repo_owner}/{github_link.repo_name}"
-        f"/pulls/{github_link.pull_request_number}"
+    pull_request = fetch_github_json(
+        build_github_api_url(
+            "repos",
+            github_link.repo_owner,
+            github_link.repo_name,
+            "pulls",
+            str(github_link.pull_request_number),
+        )
     )
-    request = Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "Projectly"})
-
-    try:
-        with urlopen(request, timeout=8) as response:
-            pull_request = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        if exc.code == 404:
-            return None
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub pull request request failed") from exc
-    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="GitHub pull request request failed") from exc
+    if not isinstance(pull_request, dict):
+        return None
 
     author = pull_request.get("user") or {}
     return GitHubPullRequestResponse(
@@ -307,6 +326,23 @@ def get_card_development(db: Session, card_id: int, current_user_id: int) -> Car
             merged_pr_count=len([pull_request for pull_request in pull_requests if pull_request.merged]),
         ),
     )
+
+
+def get_project_development(db: Session, project_id: int, current_user_id: int) -> ProjectDevelopmentResponse:
+    ensure_project_access(db, current_user_id, project_id)
+    statement = (
+        select(Card)
+        .where(Card.project_id == project_id, Card.archived.is_(False))
+        .order_by(Card.updated_at.desc(), Card.created_at.desc(), Card.id.desc())
+    )
+    card_development_items = [
+        ProjectCardDevelopmentResponse(
+            card=CardResponse.model_validate(card),
+            development=get_card_development(db, card.id, current_user_id),
+        )
+        for card in db.scalars(statement).all()
+    ]
+    return ProjectDevelopmentResponse(cards=card_development_items)
 
 
 def delete_card_github_link(db: Session, github_link_id: int, current_user_id: int) -> None:
