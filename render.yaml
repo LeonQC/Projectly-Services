@@ -1,0 +1,34 @@
+databases:
+  - name: projectly-postgres
+    databaseName: projectly
+    user: projectly
+
+services:
+  - type: web
+    name: projectly-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: APP_NAME
+        value: Projectly API
+      - key: ENVIRONMENT
+        value: production
+      - key: API_PREFIX
+        value: /api
+      - key: DATABASE_URL
+        fromDatabase:
+          name: projectly-postgres
+          property: connectionString
+      - key: AUTH_SECRET_KEY
+        sync: false
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 120
+      - key: PASSWORD_HASH_ITERATIONS
+        value: 210000
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
