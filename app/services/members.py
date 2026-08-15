@@ -13,7 +13,7 @@ from app.schemas.member import MemberInviteRequest, ProjectMemberResponse, Works
 from app.services.access import get_user_or_404
 from app.services.auth import get_user_by_email
 from app.services.projects import get_project_or_404, user_can_access_project
-from app.services.workspaces import ensure_workspace_access, ensure_workspace_owner, user_can_access_workspace
+from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace
 
 
 def get_invited_user(db: Session, payload: MemberInviteRequest) -> User:
@@ -54,7 +54,7 @@ def create_workspace_member(
     current_user_id: int,
     payload: MemberInviteRequest,
 ) -> WorkspaceMemberResponse:
-    workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
+    workspace = ensure_workspace_admin(db, current_user_id, workspace_id)
     invited_user = get_invited_user(db, payload)
     if invited_user.id == workspace.owner_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already the workspace owner")
@@ -76,7 +76,10 @@ def delete_workspace_member(db: Session, member_id: int, current_user_id: int) -
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
 
-    workspace = ensure_workspace_owner(db, current_user_id, member.workspace_id)
+    workspace = ensure_workspace_access(db, current_user_id, member.workspace_id)
+    if member.user_id != current_user_id:
+        ensure_workspace_admin(db, current_user_id, member.workspace_id)
+
     if member.user_id == workspace.owner_id or member.role == "owner":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Workspace owner cannot be removed")
 
@@ -127,7 +130,7 @@ def list_project_members(db: Session, project_id: int, current_user_id: int) -> 
                 project_id=project_id,
                 membership_type="workspace",
                 user=user,
-                role="admin",
+                role=member.role,
                 member_id=None,
                 created_at=member.created_at,
                 updated_at=member.updated_at,
@@ -165,7 +168,7 @@ def create_project_member(
     payload: MemberInviteRequest,
 ) -> ProjectMemberResponse:
     project = get_project_or_404(db, project_id)
-    ensure_workspace_owner(db, current_user_id, project.workspace_id)
+    ensure_workspace_admin(db, current_user_id, project.workspace_id)
     invited_user = get_invited_user(db, payload)
     if user_can_access_workspace(db, invited_user.id, project.workspace_id):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has project access through workspace")
