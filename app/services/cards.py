@@ -4,10 +4,33 @@ from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import Card, CardActivity, CardAttachment, CardComment, CardLabel, CardLink, CardMember, Epic, Sprint
+from app.models.project import Card, CardActivity, CardAttachment, CardComment, CardLabel, CardLink, CardMember, Epic, Project, Sprint
+from app.models.workspace import Workspace
 from app.schemas.card import CardCreate, CardDetailResponse, CardMove, CardResponse, CardUpdate
 from app.services.activities import create_card_activity
 from app.services.projects import ensure_project_access
+
+
+def build_card_display_id(db: Session, card: Card) -> str:
+    statement = (
+        select(Workspace.name, Project.name)
+        .join(Project, Project.workspace_id == Workspace.id)
+        .where(Project.id == card.project_id)
+    )
+    result = db.execute(statement).one_or_none()
+    if result is None:
+        return card.title
+
+    workspace_name, project_name = result
+    return f"{workspace_name}/{project_name}/{card.title}"
+
+
+def build_card_response(db: Session, card: Card) -> CardResponse:
+    return CardResponse.model_validate(card).model_copy(update={"display_id": build_card_display_id(db, card)})
+
+
+def build_card_responses(db: Session, cards: list[Card]) -> list[CardResponse]:
+    return [build_card_response(db, card) for card in cards]
 
 
 def get_card_or_404(db: Session, card_id: int) -> Card:
@@ -144,7 +167,7 @@ def get_card_detail(db: Session, card_id: int, current_user_id: int) -> CardDeta
 
     card = get_card(db, card_id, current_user_id)
     return CardDetailResponse(
-        card=CardResponse.model_validate(card),
+        card=build_card_response(db, card),
         labels=card_labels.list_card_labels(db, card_id, current_user_id),
         members=card_members.list_card_members(db, card_id, current_user_id),
         attachments=attachments.list_card_attachments(db, card_id, current_user_id),

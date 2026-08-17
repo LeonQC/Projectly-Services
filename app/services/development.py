@@ -29,9 +29,8 @@ from app.schemas.development import (
     ProjectDevelopmentResponse,
     ProjectGitHubEventsResponse,
 )
-from app.schemas.card import CardResponse
 from app.services.activities import create_card_activity
-from app.services.cards import ensure_card_access
+from app.services.cards import build_card_response, ensure_card_access
 from app.services.projects import ensure_project_access
 
 
@@ -413,7 +412,7 @@ def get_project_development(db: Session, project_id: int, current_user_id: int) 
     )
     card_development_items = [
         ProjectCardDevelopmentResponse(
-            card=CardResponse.model_validate(card),
+            card=build_card_response(db, card),
             development=get_card_development(db, card.id, current_user_id),
         )
         for card in db.scalars(statement).all()
@@ -449,7 +448,7 @@ def get_project_github_events(db: Session, project_id: int, current_user_id: int
             continue
         card_event_items.append(
             ProjectCardGitHubEventsResponse(
-                card=CardResponse.model_validate(card),
+                card=build_card_response(db, card),
                 events=[GitHubEventResponse.model_validate(event) for event in events],
             )
         )
