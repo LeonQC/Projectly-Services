@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, IdMixin, TimestampMixin
@@ -127,6 +127,20 @@ class CardGitHubLink(IdMixin, TimestampMixin, Base):
     commit_sha: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
     url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+
+
+class GitHubAppInstallation(IdMixin, TimestampMixin, Base):
+    __tablename__ = "github_app_installations"
+
+    installation_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
+    account_login: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    account_type: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    account_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    repository_selection: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    setup_action: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    sender_login: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    installed_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    raw_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
 class CardAttachment(IdMixin, TimestampMixin, Base):

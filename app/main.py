@@ -11,6 +11,7 @@ from app.api.routers import (
     comments,
     development,
     epics,
+    github_app,
     notifications,
     projects,
     sprints,
@@ -41,6 +42,7 @@ app.include_router(card_members.router, prefix=settings.api_prefix)
 app.include_router(attachments.router, prefix=settings.api_prefix)
 app.include_router(comments.router, prefix=settings.api_prefix)
 app.include_router(development.router, prefix=settings.api_prefix)
+app.include_router(github_app.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 app.include_router(user_settings.router, prefix=settings.api_prefix)
 
