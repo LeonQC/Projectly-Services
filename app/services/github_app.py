@@ -287,6 +287,15 @@ def list_user_installations(db: Session, current_user_id: int) -> list[GitHubApp
     return list(db.scalars(statement).all())
 
 
+def disconnect_installation(db: Session, installation_id: int, current_user_id: int) -> None:
+    installation = get_installation_or_404(db, installation_id)
+    if installation.installed_by_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GitHub App installation not found")
+
+    installation.installed_by_id = None
+    db.commit()
+
+
 def handle_github_app_webhook(
     db: Session,
     *,

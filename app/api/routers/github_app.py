@@ -58,6 +58,16 @@ def claim_github_app_installation(
     )
 
 
+@router.delete("/installations/{installation_id}")
+def disconnect_github_app_installation(
+    installation_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    github_app_service.disconnect_installation(db, installation_id, current_user_id)
+    return success_response(message="GitHub App installation disconnected")
+
+
 @router.post("/webhook")
 async def github_app_webhook(
     request: Request,
