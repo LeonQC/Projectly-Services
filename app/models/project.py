@@ -143,6 +143,25 @@ class GitHubAppInstallation(IdMixin, TimestampMixin, Base):
     raw_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
+class GitHubEvent(IdMixin, TimestampMixin, Base):
+    __tablename__ = "github_events"
+
+    delivery_id: Mapped[Optional[str]] = mapped_column(String(80), index=True, nullable=True)
+    installation_id: Mapped[Optional[int]] = mapped_column(BigInteger, index=True, nullable=True)
+    repo_owner: Mapped[Optional[str]] = mapped_column(String(120), index=True, nullable=True)
+    repo_name: Mapped[Optional[str]] = mapped_column(String(120), index=True, nullable=True)
+    event_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    action: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    branch_name: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    pull_request_number: Mapped[Optional[int]] = mapped_column(Integer, index=True, nullable=True)
+    commit_sha: Mapped[Optional[str]] = mapped_column(String(80), index=True, nullable=True)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    sender_login: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    raw_payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
 class CardAttachment(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_attachments"
 

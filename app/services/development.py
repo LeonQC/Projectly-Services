@@ -7,23 +7,27 @@ from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.project import CardGitHubLink
+from app.models.project import CardGitHubLink, GitHubEvent
 from app.models.project import Card
 from app.schemas.development import (
     CardDevelopmentResponse,
+    CardGitHubEventsResponse,
     CardGitHubLinkCreate,
     CardGitHubLinkResponse,
     CardGitHubLinkUpdate,
     DevelopmentStatusResponse,
     GitHubBranchResponse,
     GitHubCommitResponse,
+    GitHubEventResponse,
     GitHubPullRequestResponse,
     ProjectCardDevelopmentResponse,
+    ProjectCardGitHubEventsResponse,
     ProjectDevelopmentResponse,
+    ProjectGitHubEventsResponse,
 )
 from app.schemas.card import CardResponse
 from app.services.activities import create_card_activity
@@ -269,6 +273,72 @@ def fetch_pull_request_for_link(github_link: CardGitHubLink) -> GitHubPullReques
     )
 
 
+def github_event_matches_link(event: GitHubEvent, github_link: CardGitHubLink) -> bool:
+    if (event.repo_owner or "").lower() != github_link.repo_owner.lower():
+        return False
+
+    if (event.repo_name or "").lower() != github_link.repo_name.lower():
+        return False
+
+    if github_link.commit_sha and not (
+        event.commit_sha
+        and (
+            event.commit_sha.startswith(github_link.commit_sha)
+            or github_link.commit_sha.startswith(event.commit_sha)
+        )
+    ):
+        return False
+
+    if github_link.pull_request_number and event.pull_request_number != github_link.pull_request_number:
+        return False
+
+    if github_link.branch_name and event.branch_name != github_link.branch_name:
+        return False
+
+    return True
+
+
+def list_events_for_github_links(db: Session, github_links: list[CardGitHubLink], limit: int = 50) -> list[GitHubEvent]:
+    if not github_links:
+        return []
+
+    repo_pairs = {(github_link.repo_owner, github_link.repo_name) for github_link in github_links}
+    repo_filters = [
+        (func.lower(GitHubEvent.repo_owner) == repo_owner.lower())
+        & (func.lower(GitHubEvent.repo_name) == repo_name.lower())
+        for repo_owner, repo_name in repo_pairs
+    ]
+    statement = (
+        select(GitHubEvent)
+        .where(*([repo_filters[0]] if len(repo_filters) == 1 else []))
+        .order_by(GitHubEvent.created_at.desc(), GitHubEvent.id.desc())
+        .limit(250)
+    )
+
+    if len(repo_filters) > 1:
+        statement = statement.where(or_(*repo_filters))
+
+    repo_events = list(db.scalars(statement).all())
+    matched_events: list[GitHubEvent] = []
+    seen_event_ids: set[int] = set()
+    for event in repo_events:
+        if event.id in seen_event_ids:
+            continue
+        if any(github_event_matches_link(event, github_link) for github_link in github_links):
+            seen_event_ids.add(event.id)
+            matched_events.append(event)
+        if len(matched_events) >= limit:
+            break
+
+    return matched_events
+
+
+def get_card_github_events(db: Session, card_id: int, current_user_id: int) -> CardGitHubEventsResponse:
+    github_links = list_card_github_links(db, card_id, current_user_id)
+    events = list_events_for_github_links(db, github_links)
+    return CardGitHubEventsResponse(events=[GitHubEventResponse.model_validate(event) for event in events])
+
+
 def get_card_development(db: Session, card_id: int, current_user_id: int) -> CardDevelopmentResponse:
     github_links = list_card_github_links(db, card_id, current_user_id)
     recent_commits: list[GitHubCommitResponse] = []
@@ -343,6 +413,30 @@ def get_project_development(db: Session, project_id: int, current_user_id: int) 
         for card in db.scalars(statement).all()
     ]
     return ProjectDevelopmentResponse(cards=card_development_items)
+
+
+def get_project_github_events(db: Session, project_id: int, current_user_id: int) -> ProjectGitHubEventsResponse:
+    ensure_project_access(db, current_user_id, project_id)
+    statement = (
+        select(Card)
+        .where(Card.project_id == project_id, Card.archived.is_(False))
+        .order_by(Card.updated_at.desc(), Card.created_at.desc(), Card.id.desc())
+    )
+    cards = list(db.scalars(statement).all())
+    card_event_items: list[ProjectCardGitHubEventsResponse] = []
+    for card in cards:
+        github_links = list_card_github_links(db, card.id, current_user_id)
+        events = list_events_for_github_links(db, github_links, limit=20)
+        if not events:
+            continue
+        card_event_items.append(
+            ProjectCardGitHubEventsResponse(
+                card=CardResponse.model_validate(card),
+                events=[GitHubEventResponse.model_validate(event) for event in events],
+            )
+        )
+
+    return ProjectGitHubEventsResponse(cards=card_event_items)
 
 
 def delete_card_github_link(db: Session, github_link_id: int, current_user_id: int) -> None:

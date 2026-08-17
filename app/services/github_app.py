@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.project import GitHubAppInstallation
+from app.models.project import GitHubAppInstallation, GitHubEvent
 
 
 def verify_github_webhook_signature(raw_body: bytes, signature_header: Optional[str]) -> None:
@@ -48,6 +48,171 @@ def extract_installation_id(payload: dict[str, Any]) -> Optional[int]:
 
     installation_id = installation.get("id")
     return installation_id if isinstance(installation_id, int) else None
+
+
+def extract_repository(payload: dict[str, Any]) -> tuple[Optional[str], Optional[str]]:
+    repository = payload.get("repository")
+    if not isinstance(repository, dict):
+        return None, None
+
+    owner = repository.get("owner")
+    repo_owner = owner.get("login") if isinstance(owner, dict) else None
+    repo_name = repository.get("name")
+    if isinstance(repo_owner, str) and isinstance(repo_name, str):
+        return repo_owner, repo_name
+
+    full_name = repository.get("full_name")
+    if isinstance(full_name, str) and "/" in full_name:
+        owner_name, repository_name = full_name.split("/", 1)
+        return owner_name, repository_name
+
+    return None, repo_name if isinstance(repo_name, str) else None
+
+
+def extract_sender_login(payload: dict[str, Any]) -> Optional[str]:
+    sender = payload.get("sender")
+    if not isinstance(sender, dict):
+        return None
+
+    login = sender.get("login")
+    return login if isinstance(login, str) else None
+
+
+def extract_branch_from_ref(ref: Any) -> Optional[str]:
+    if not isinstance(ref, str):
+        return None
+    if ref.startswith("refs/heads/"):
+        return ref.removeprefix("refs/heads/")
+    return ref
+
+
+def delivery_already_stored(db: Session, delivery_id: Optional[str]) -> bool:
+    if not delivery_id:
+        return False
+
+    return db.scalar(select(GitHubEvent.id).where(GitHubEvent.delivery_id == delivery_id).limit(1)) is not None
+
+
+def build_push_events(
+    *,
+    delivery_id: Optional[str],
+    installation_id: Optional[int],
+    payload: dict[str, Any],
+) -> list[GitHubEvent]:
+    repo_owner, repo_name = extract_repository(payload)
+    sender_login = extract_sender_login(payload)
+    branch_name = extract_branch_from_ref(payload.get("ref"))
+    commits = payload.get("commits")
+    events: list[GitHubEvent] = []
+
+    if isinstance(commits, list) and commits:
+        for commit in commits:
+            if not isinstance(commit, dict):
+                continue
+
+            commit_sha = commit.get("id")
+            message = commit.get("message")
+            commit_url = commit.get("distinct_url") or commit.get("url")
+            events.append(
+                GitHubEvent(
+                    delivery_id=delivery_id,
+                    installation_id=installation_id,
+                    repo_owner=repo_owner,
+                    repo_name=repo_name,
+                    event_type="push",
+                    branch_name=branch_name,
+                    commit_sha=commit_sha if isinstance(commit_sha, str) else None,
+                    title="Commit pushed",
+                    message=message if isinstance(message, str) else None,
+                    url=commit_url if isinstance(commit_url, str) else None,
+                    sender_login=sender_login,
+                    raw_payload={"commit": commit, "repository": payload.get("repository")},
+                )
+            )
+        return events
+
+    head_commit = payload.get("head_commit")
+    message = head_commit.get("message") if isinstance(head_commit, dict) else None
+    events.append(
+        GitHubEvent(
+            delivery_id=delivery_id,
+            installation_id=installation_id,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            event_type="push",
+            branch_name=branch_name,
+            commit_sha=payload.get("after") if isinstance(payload.get("after"), str) else None,
+            title="Push received",
+            message=message if isinstance(message, str) else None,
+            url=payload.get("compare") if isinstance(payload.get("compare"), str) else None,
+            sender_login=sender_login,
+            raw_payload=payload,
+        )
+    )
+    return events
+
+
+def build_pull_request_event(
+    *,
+    delivery_id: Optional[str],
+    installation_id: Optional[int],
+    payload: dict[str, Any],
+) -> list[GitHubEvent]:
+    pull_request = payload.get("pull_request")
+    if not isinstance(pull_request, dict):
+        return []
+
+    repo_owner, repo_name = extract_repository(payload)
+    sender_login = extract_sender_login(payload)
+    action = payload.get("action")
+    head = pull_request.get("head")
+    branch_name = head.get("ref") if isinstance(head, dict) else None
+    commit_sha = head.get("sha") if isinstance(head, dict) else None
+    pull_request_number = pull_request.get("number")
+
+    return [
+        GitHubEvent(
+            delivery_id=delivery_id,
+            installation_id=installation_id,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            event_type="pull_request",
+            action=action if isinstance(action, str) else None,
+            branch_name=branch_name if isinstance(branch_name, str) else None,
+            pull_request_number=pull_request_number if isinstance(pull_request_number, int) else None,
+            commit_sha=commit_sha if isinstance(commit_sha, str) else None,
+            title=pull_request.get("title") if isinstance(pull_request.get("title"), str) else None,
+            message=pull_request.get("body") if isinstance(pull_request.get("body"), str) else None,
+            url=pull_request.get("html_url") if isinstance(pull_request.get("html_url"), str) else None,
+            sender_login=sender_login,
+            raw_payload=payload,
+        )
+    ]
+
+
+def store_github_events(
+    db: Session,
+    *,
+    event: str,
+    delivery_id: Optional[str],
+    payload: dict[str, Any],
+) -> list[GitHubEvent]:
+    if delivery_already_stored(db, delivery_id):
+        return []
+
+    installation_id = extract_installation_id(payload)
+    if event == "push":
+        events = build_push_events(delivery_id=delivery_id, installation_id=installation_id, payload=payload)
+    elif event == "pull_request":
+        events = build_pull_request_event(delivery_id=delivery_id, installation_id=installation_id, payload=payload)
+    else:
+        return []
+
+    if events:
+        db.add_all(events)
+        db.commit()
+
+    return events
 
 
 def upsert_github_app_installation(
@@ -126,14 +291,19 @@ def handle_github_app_webhook(
     db: Session,
     *,
     event: str,
+    delivery_id: Optional[str],
     payload: dict[str, Any],
 ) -> bool:
-    if event not in {"ping", "installation", "installation_repositories"}:
+    if event not in {"ping", "installation", "installation_repositories", "push", "pull_request"}:
         return False
 
     installation_id = extract_installation_id(payload)
+    if installation_id is not None:
+        upsert_github_app_installation(db, installation_id, payload=payload)
+
+    if event in {"push", "pull_request"}:
+        store_github_events(db, event=event, delivery_id=delivery_id, payload=payload)
+
     if installation_id is None:
         return True
-
-    upsert_github_app_installation(db, installation_id, payload=payload)
     return True
