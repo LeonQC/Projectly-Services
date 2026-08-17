@@ -4,10 +4,12 @@ from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
 from app.schemas.development import (
     CardDevelopmentResponse,
+    CardGitHubEventsResponse,
     CardGitHubLinkCreate,
     CardGitHubLinkResponse,
     CardGitHubLinkUpdate,
     ProjectDevelopmentResponse,
+    ProjectGitHubEventsResponse,
 )
 from app.services import development as development_service
 
@@ -25,6 +27,18 @@ def get_card_development(card_id: int, db: DbSession, current_user_id: Authentic
 def get_project_development(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     development = development_service.get_project_development(db, project_id, current_user_id)
     return success_response(data=ProjectDevelopmentResponse.model_validate(development))
+
+
+@router.get("/cards/{card_id}/development/events")
+def get_card_github_events(card_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    events = development_service.get_card_github_events(db, card_id, current_user_id)
+    return success_response(data=CardGitHubEventsResponse.model_validate(events))
+
+
+@router.get("/projects/{project_id}/development/events")
+def get_project_github_events(project_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
+    events = development_service.get_project_github_events(db, project_id, current_user_id)
+    return success_response(data=ProjectGitHubEventsResponse.model_validate(events))
 
 
 @router.post("/cards/{card_id}/development/github-links", status_code=status.HTTP_201_CREATED)

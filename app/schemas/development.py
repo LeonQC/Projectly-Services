@@ -107,6 +107,27 @@ class GitHubPullRequestResponse(BaseModel):
     repo_name: str
 
 
+class GitHubEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    delivery_id: Optional[str]
+    installation_id: Optional[int]
+    repo_owner: Optional[str]
+    repo_name: Optional[str]
+    event_type: str
+    action: Optional[str]
+    branch_name: Optional[str]
+    pull_request_number: Optional[int]
+    commit_sha: Optional[str]
+    title: Optional[str]
+    message: Optional[str]
+    url: Optional[str]
+    sender_login: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
 class DevelopmentStatusResponse(BaseModel):
     has_github_links: bool
     link_count: int
@@ -134,3 +155,16 @@ class ProjectCardDevelopmentResponse(BaseModel):
 
 class ProjectDevelopmentResponse(BaseModel):
     cards: list[ProjectCardDevelopmentResponse]
+
+
+class CardGitHubEventsResponse(BaseModel):
+    events: list[GitHubEventResponse]
+
+
+class ProjectCardGitHubEventsResponse(BaseModel):
+    card: CardResponse
+    events: list[GitHubEventResponse]
+
+
+class ProjectGitHubEventsResponse(BaseModel):
+    cards: list[ProjectCardGitHubEventsResponse]
