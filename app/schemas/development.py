@@ -111,6 +111,7 @@ class GitHubEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    card_id: Optional[int]
     delivery_id: Optional[str]
     installation_id: Optional[int]
     repo_owner: Optional[str]
