@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     password_hash_iterations: int = 210_000
     google_client_id: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    frontend_url: str = "http://localhost:5173"
+    github_app_webhook_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
