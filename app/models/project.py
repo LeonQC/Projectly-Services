@@ -146,6 +146,7 @@ class GitHubAppInstallation(IdMixin, TimestampMixin, Base):
 class GitHubEvent(IdMixin, TimestampMixin, Base):
     __tablename__ = "github_events"
 
+    card_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cards.id"), index=True, nullable=True)
     delivery_id: Mapped[Optional[str]] = mapped_column(String(80), index=True, nullable=True)
     installation_id: Mapped[Optional[int]] = mapped_column(BigInteger, index=True, nullable=True)
     repo_owner: Mapped[Optional[str]] = mapped_column(String(120), index=True, nullable=True)

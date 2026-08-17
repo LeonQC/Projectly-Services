@@ -334,8 +334,14 @@ def list_events_for_github_links(db: Session, github_links: list[CardGitHubLink]
 
 
 def get_card_github_events(db: Session, card_id: int, current_user_id: int) -> CardGitHubEventsResponse:
-    github_links = list_card_github_links(db, card_id, current_user_id)
-    events = list_events_for_github_links(db, github_links)
+    ensure_card_access(db, current_user_id, card_id)
+    statement = (
+        select(GitHubEvent)
+        .where(GitHubEvent.card_id == card_id)
+        .order_by(GitHubEvent.created_at.desc(), GitHubEvent.id.desc())
+        .limit(50)
+    )
+    events = list(db.scalars(statement).all())
     return CardGitHubEventsResponse(events=[GitHubEventResponse.model_validate(event) for event in events])
 
 
@@ -423,10 +429,22 @@ def get_project_github_events(db: Session, project_id: int, current_user_id: int
         .order_by(Card.updated_at.desc(), Card.created_at.desc(), Card.id.desc())
     )
     cards = list(db.scalars(statement).all())
+    card_ids = [card.id for card in cards]
+    events_by_card_id: dict[int, list[GitHubEvent]] = {card.id: [] for card in cards}
+    if card_ids:
+        event_statement = (
+            select(GitHubEvent)
+            .where(GitHubEvent.card_id.in_(card_ids))
+            .order_by(GitHubEvent.created_at.desc(), GitHubEvent.id.desc())
+            .limit(500)
+        )
+        for event in db.scalars(event_statement).all():
+            if event.card_id in events_by_card_id:
+                events_by_card_id[event.card_id].append(event)
+
     card_event_items: list[ProjectCardGitHubEventsResponse] = []
     for card in cards:
-        github_links = list_card_github_links(db, card.id, current_user_id)
-        events = list_events_for_github_links(db, github_links, limit=20)
+        events = events_by_card_id[card.id][:20]
         if not events:
             continue
         card_event_items.append(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
@@ -9,7 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.project import GitHubAppInstallation, GitHubEvent
+from app.models.project import Card, GitHubAppInstallation, GitHubEvent
+
+
+CARD_REFERENCE_PATTERN = re.compile(
+    r"(?:\bcard\s*[-#:]?\s*|\bprojectly\s*[-#]\s*|#card\s*[-#:]?\s*)(\d+)",
+    re.IGNORECASE,
+)
 
 
 def verify_github_webhook_signature(raw_body: bytes, signature_header: Optional[str]) -> None:
@@ -84,6 +91,29 @@ def extract_branch_from_ref(ref: Any) -> Optional[str]:
     if ref.startswith("refs/heads/"):
         return ref.removeprefix("refs/heads/")
     return ref
+
+
+def extract_card_reference_ids(*values: Optional[str]) -> list[int]:
+    card_ids: list[int] = []
+    seen_card_ids: set[int] = set()
+    for value in values:
+        if not value:
+            continue
+        for match in CARD_REFERENCE_PATTERN.finditer(value):
+            card_id = int(match.group(1))
+            if card_id in seen_card_ids:
+                continue
+            seen_card_ids.add(card_id)
+            card_ids.append(card_id)
+    return card_ids
+
+
+def match_card_id_for_event(db: Session, event: GitHubEvent) -> Optional[int]:
+    card_ids = extract_card_reference_ids(event.title, event.message, event.branch_name)
+    for card_id in card_ids:
+        if db.get(Card, card_id) is not None:
+            return card_id
+    return None
 
 
 def delivery_already_stored(db: Session, delivery_id: Optional[str]) -> bool:
@@ -209,6 +239,8 @@ def store_github_events(
         return []
 
     if events:
+        for github_event in events:
+            github_event.card_id = match_card_id_for_event(db, github_event)
         db.add_all(events)
         db.commit()
 
