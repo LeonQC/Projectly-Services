@@ -2,8 +2,8 @@ from fastapi import APIRouter, status
 
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
-from app.schemas.card import CardResponse
 from app.schemas.sprint import CardSprintUpdate, SprintCreate, SprintResponse, SprintUpdate
+from app.services import cards as cards_service
 from app.services import sprints as sprints_service
 
 
@@ -65,7 +65,7 @@ def permanently_delete_sprint(sprint_id: int, db: DbSession, current_user_id: Au
 @router.get("/sprints/{sprint_id}/cards")
 def list_sprint_cards(sprint_id: int, db: DbSession, current_user_id: AuthenticatedUserId) -> dict:
     cards = sprints_service.list_sprint_cards(db, sprint_id, current_user_id)
-    return success_response(data=[CardResponse.model_validate(card) for card in cards])
+    return success_response(data=cards_service.build_card_responses(db, cards))
 
 
 @router.patch("/cards/{card_id}/sprint")
@@ -76,4 +76,4 @@ def update_card_sprint(
     current_user_id: AuthenticatedUserId,
 ) -> dict:
     card = sprints_service.update_card_sprint(db, card_id, current_user_id, payload)
-    return success_response(data=CardResponse.model_validate(card), message="Card sprint updated")
+    return success_response(data=cards_service.build_card_response(db, card), message="Card sprint updated")

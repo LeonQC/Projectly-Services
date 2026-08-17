@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import delete, exists, or_, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.notification import Invitation
@@ -87,8 +87,54 @@ def list_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
     return list(db.scalars(statement).all())
 
 
+def user_has_workspace_name_conflict(
+    db: Session,
+    current_user_id: int,
+    name: str,
+    *,
+    exclude_workspace_id: int | None = None,
+) -> bool:
+    normalized_name = name.strip().lower()
+    member_workspace_ids = select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == current_user_id)
+    statement = select(
+        exists().where(
+            Workspace.archived.is_(False),
+            func.lower(Workspace.name) == normalized_name,
+            or_(
+                Workspace.owner_id == current_user_id,
+                Workspace.id.in_(member_workspace_ids),
+            ),
+        )
+    )
+    if exclude_workspace_id is not None:
+        statement = select(
+            exists().where(
+                Workspace.archived.is_(False),
+                Workspace.id != exclude_workspace_id,
+                func.lower(Workspace.name) == normalized_name,
+                or_(
+                    Workspace.owner_id == current_user_id,
+                    Workspace.id.in_(member_workspace_ids),
+                ),
+            )
+        )
+    return bool(db.scalar(statement))
+
+
+def ensure_workspace_name_available(
+    db: Session,
+    current_user_id: int,
+    name: str,
+    *,
+    exclude_workspace_id: int | None = None,
+) -> None:
+    if user_has_workspace_name_conflict(db, current_user_id, name, exclude_workspace_id=exclude_workspace_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Workspace name already exists")
+
+
 def create_workspace(db: Session, current_user_id: int, payload: WorkspaceCreate) -> Workspace:
     get_user_or_404(db, current_user_id)
+    ensure_workspace_name_available(db, current_user_id, payload.name)
     workspace = Workspace(name=payload.name, owner_id=current_user_id)
     db.add(workspace)
     db.flush()
@@ -108,6 +154,8 @@ def update_workspace(
 ) -> Workspace:
     workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
     update_data = payload.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        ensure_workspace_name_available(db, current_user_id, update_data["name"], exclude_workspace_id=workspace_id)
     for field, value in update_data.items():
         setattr(workspace, field, value)
 
@@ -143,6 +191,7 @@ def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> W
     workspace = db.get(Workspace, workspace_id)
     if workspace is None or workspace.owner_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    ensure_workspace_name_available(db, current_user_id, workspace.name, exclude_workspace_id=workspace_id)
     workspace.archived = False
     db.commit()
     db.refresh(workspace)

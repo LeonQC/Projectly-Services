@@ -74,6 +74,7 @@ class CardResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    display_id: Optional[str] = None
     project_id: int
     epic_id: Optional[int]
     sprint_id: Optional[int]
