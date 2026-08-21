@@ -12,13 +12,21 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     frontend_url: str = "http://localhost:5173"
+    elasticsearch_url: str = "http://localhost:9200"
     github_app_webhook_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        origins = []
+        for origin in self.cors_origins.split(","):
+            normalized_origin = origin.strip().rstrip("/")
+            if not normalized_origin:
+                continue
+            origins.append(normalized_origin)
+            origins.append(f"{normalized_origin}/")
+        return list(dict.fromkeys(origins))
 
     @property
     def sqlalchemy_database_url(self) -> str:
