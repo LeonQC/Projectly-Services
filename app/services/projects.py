@@ -19,6 +19,7 @@ from app.models.project import (
 from app.models.workspace import Workspace
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
+from app.services.search import delete_card_from_index, delete_comment_from_index, delete_project_from_index, index_project
 from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace, user_can_admin_workspace
 
 
@@ -76,6 +77,8 @@ def create_project(
     db.add(project)
     db.commit()
     db.refresh(project)
+    workspace = db.get(Workspace, workspace_id)
+    index_project(project, workspace.name if workspace is not None else None)
     return project
 
 
@@ -97,6 +100,8 @@ def update_project(
 
     db.commit()
     db.refresh(project)
+    workspace = db.get(Workspace, project.workspace_id)
+    index_project(project, workspace.name if workspace is not None else None)
     return project
 
 
@@ -105,6 +110,8 @@ def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     ensure_workspace_admin(db, current_user_id, project.workspace_id)
     project.archived = True
     db.commit()
+    workspace = db.get(Workspace, project.workspace_id)
+    index_project(project, workspace.name if workspace is not None else None)
 
 
 def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
@@ -114,11 +121,13 @@ def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
         .where(Project.archived.is_(True))
         .order_by(Project.updated_at.desc(), Project.id.desc())
     )
-    projects = [
-        project
-        for project in db.scalars(statement).all()
-        if user_can_admin_workspace(db, current_user_id, project.workspace_id)
-    ]
+    projects = []
+    for project in db.scalars(statement).all():
+        try:
+            if user_can_admin_workspace(db, current_user_id, project.workspace_id):
+                projects.append(project)
+        except HTTPException:
+            continue
     return projects
 
 
@@ -151,12 +160,16 @@ def restore_project(db: Session, project_id: int, current_user_id: int) -> Proje
     project.archived = False
     db.commit()
     db.refresh(project)
+    workspace = db.get(Workspace, project.workspace_id)
+    index_project(project, workspace.name if workspace is not None else None)
     return project
 
 
 def permanently_delete_project_records(db: Session, project_id: int) -> None:
     card_ids = list(db.scalars(select(Card.id).where(Card.project_id == project_id)).all())
+    comment_ids = []
     if card_ids:
+        comment_ids = list(db.scalars(select(CardComment.id).where(CardComment.card_id.in_(card_ids))).all())
         db.execute(delete(CardAttachment).where(CardAttachment.card_id.in_(card_ids)))
         db.execute(delete(CardComment).where(CardComment.card_id.in_(card_ids)))
         db.execute(delete(CardLabel).where(CardLabel.card_id.in_(card_ids)))
@@ -168,6 +181,10 @@ def permanently_delete_project_records(db: Session, project_id: int) -> None:
         )
         db.execute(delete(CardActivity).where(CardActivity.card_id.in_(card_ids)))
         db.execute(delete(Card).where(Card.id.in_(card_ids)))
+        for card_id in card_ids:
+            delete_card_from_index(card_id)
+        for comment_id in comment_ids:
+            delete_comment_from_index(comment_id)
 
     epic_ids = list(db.scalars(select(Epic.id).where(Epic.project_id == project_id)).all())
     if epic_ids:
@@ -177,6 +194,7 @@ def permanently_delete_project_records(db: Session, project_id: int) -> None:
     db.execute(delete(ProjectGuest).where(ProjectGuest.project_id == project_id))
     db.execute(delete(Invitation).where(Invitation.target_type == "project", Invitation.target_id == project_id))
     db.execute(delete(Project).where(Project.id == project_id))
+    delete_project_from_index(project_id)
 
 
 def permanently_delete_project(db: Session, project_id: int, current_user_id: int) -> None:

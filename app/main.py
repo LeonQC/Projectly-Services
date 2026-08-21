@@ -14,6 +14,7 @@ from app.api.routers import (
     github_app,
     notifications,
     projects,
+    search,
     sprints,
     user_settings,
     workspaces,
@@ -45,7 +46,7 @@ app.include_router(development.router, prefix=settings.api_prefix)
 app.include_router(github_app.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 app.include_router(user_settings.router, prefix=settings.api_prefix)
-
+app.include_router(search.router, prefix=settings.api_prefix)
 
 @app.get("/health")
 def health_check():
