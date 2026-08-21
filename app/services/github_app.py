@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.project import Card, GitHubAppInstallation, GitHubEvent
+from app.services.search import index_github_event
 
 
 CARD_REFERENCE_PATTERN = re.compile(
@@ -243,6 +244,9 @@ def store_github_events(
             github_event.card_id = match_card_id_for_event(db, github_event)
         db.add_all(events)
         db.commit()
+        for github_event in events:
+            db.refresh(github_event)
+            index_github_event(db, github_event)
 
     return events
 

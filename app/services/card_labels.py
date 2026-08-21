@@ -3,10 +3,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.project import CardLabel
+from app.models.project import Card, CardLabel
 from app.schemas.card_label import CardLabelCreate, CardLabelUpdate
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
+from app.services.search import index_card
 
 
 def get_card_label_or_404(db: Session, label_id: int) -> CardLabel:
@@ -23,7 +24,7 @@ def ensure_card_label_access(db: Session, user_id: int, label_id: int) -> CardLa
 
 
 def list_card_labels(db: Session, card_id: int, current_user_id: int) -> list[CardLabel]:
-    ensure_card_access(db, current_user_id, card_id)
+    card = ensure_card_access(db, current_user_id, card_id)
     statement = (
         select(CardLabel)
         .where(CardLabel.card_id == card_id)
@@ -61,6 +62,8 @@ def create_card_label(
     )
     db.commit()
     db.refresh(label)
+    db.refresh(card)
+    index_card(db, card)
     return label
 
 
@@ -87,6 +90,8 @@ def update_card_label(
             metadata={"label_id": label.id, "fields": changed_fields},
         )
 
+    card_id = label.card_id
+
     try:
         db.commit()
     except IntegrityError as exc:
@@ -94,6 +99,9 @@ def update_card_label(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Card label already exists") from exc
 
     db.refresh(label)
+    card = db.get(Card, card_id)
+    if card is not None:
+        index_card(db, card)
     return label
 
 
@@ -110,3 +118,6 @@ def delete_card_label(db: Session, label_id: int, current_user_id: int) -> None:
         metadata={"label_id": label_id, "name": label_name},
     )
     db.commit()
+    card = db.get(Card, card_id)
+    if card is not None:
+        index_card(db, card)

@@ -19,7 +19,13 @@ from app.models.project import (
 from app.models.workspace import Workspace
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
-from app.services.search import delete_card_from_index, delete_comment_from_index, delete_project_from_index, index_project
+from app.services.search import (
+    delete_card_from_index,
+    delete_comment_from_index,
+    delete_project_from_index,
+    index_project,
+    reindex_project_search_documents,
+)
 from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace, user_can_admin_workspace
 
 
@@ -78,7 +84,11 @@ def create_project(
     db.commit()
     db.refresh(project)
     workspace = db.get(Workspace, workspace_id)
-    index_project(project, workspace.name if workspace is not None else None)
+    index_project(
+        project,
+        workspace.name if workspace is not None else None,
+        workspace.archived if workspace is not None else None,
+    )
     return project
 
 
@@ -101,7 +111,11 @@ def update_project(
     db.commit()
     db.refresh(project)
     workspace = db.get(Workspace, project.workspace_id)
-    index_project(project, workspace.name if workspace is not None else None)
+    index_project(
+        project,
+        workspace.name if workspace is not None else None,
+        workspace.archived if workspace is not None else None,
+    )
     return project
 
 
@@ -110,8 +124,7 @@ def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     ensure_workspace_admin(db, current_user_id, project.workspace_id)
     project.archived = True
     db.commit()
-    workspace = db.get(Workspace, project.workspace_id)
-    index_project(project, workspace.name if workspace is not None else None)
+    reindex_project_search_documents(db, project.id)
 
 
 def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
@@ -160,8 +173,7 @@ def restore_project(db: Session, project_id: int, current_user_id: int) -> Proje
     project.archived = False
     db.commit()
     db.refresh(project)
-    workspace = db.get(Workspace, project.workspace_id)
-    index_project(project, workspace.name if workspace is not None else None)
+    reindex_project_search_documents(db, project.id)
     return project
 
 
