@@ -26,7 +26,7 @@ from app.schemas.card import (
 )
 from app.services.activities import create_card_activity
 from app.services.projects import ensure_project_access
-from app.services.search import delete_card_from_index, index_card
+from app.services.search import delete_card_from_index, index_card, reindex_card_search_documents
 
 
 def build_card_display_id(db: Session, card: Card) -> str:
@@ -288,10 +288,7 @@ def update_card(
     db.refresh(card)
 
     if changed_fields:
-        index_card(
-            db,
-            card,
-        )
+        reindex_card_search_documents(db, card.id)
 
     return card
 
@@ -445,10 +442,7 @@ def archive_card(
     db.commit()
     db.refresh(card)
 
-    index_card(
-        db,
-        card,
-    )
+    reindex_card_search_documents(db, card.id)
 
 
 def restore_card(
@@ -488,10 +482,7 @@ def restore_card(
     db.commit()
     db.refresh(card)
 
-    index_card(
-        db,
-        card,
-    )
+    reindex_card_search_documents(db, card.id)
 
     return card
 

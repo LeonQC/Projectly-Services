@@ -7,6 +7,7 @@ from app.models.project import Project
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.access import get_user_or_404
+from app.services.search import reindex_workspace_search_documents
 
 
 def user_can_access_workspace(db: Session, user_id: int, workspace_id: int) -> bool:
@@ -161,6 +162,7 @@ def update_workspace(
 
     db.commit()
     db.refresh(workspace)
+    reindex_workspace_search_documents(db, workspace.id)
     return workspace
 
 
@@ -168,6 +170,7 @@ def archive_workspace(db: Session, workspace_id: int, current_user_id: int) -> N
     workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
     workspace.archived = True
     db.commit()
+    reindex_workspace_search_documents(db, workspace.id)
 
 
 def list_deleted_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
@@ -195,6 +198,7 @@ def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> W
     workspace.archived = False
     db.commit()
     db.refresh(workspace)
+    reindex_workspace_search_documents(db, workspace.id)
     return workspace
 
 
