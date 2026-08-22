@@ -485,21 +485,25 @@ def delete_workspace_search_documents(workspace_id: int) -> dict[str, int]:
         index=PROJECT_INDEX,
         body={"query": {"term": {"workspace_id": workspace_id}}},
         ignore_unavailable=True,
+        conflicts="proceed",
     )
     card_response = es.delete_by_query(
         index=CARD_INDEX,
         body={"query": {"term": {"workspace_id": workspace_id}}},
         ignore_unavailable=True,
+        conflicts="proceed",
     )
     comment_response = es.delete_by_query(
         index=COMMENT_INDEX,
         body={"query": {"term": {"workspace_id": workspace_id}}},
         ignore_unavailable=True,
+        conflicts="proceed",
     )
     github_event_response = es.delete_by_query(
         index=GITHUB_EVENT_INDEX,
         body={"query": {"term": {"workspace_id": workspace_id}}},
         ignore_unavailable=True,
+        conflicts="proceed",
     )
 
     return {
