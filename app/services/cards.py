@@ -9,6 +9,7 @@ from app.models.project import (
     CardActivity,
     CardAttachment,
     CardComment,
+    CardGitHubLink,
     CardLabel,
     CardLink,
     CardMember,
@@ -27,6 +28,7 @@ from app.schemas.card import (
 from app.services.activities import create_card_activity
 from app.services.projects import ensure_project_access
 from app.services.search import delete_card_from_index, index_card, reindex_card_search_documents
+from app.services.search_events import publish_search_event
 
 
 def build_card_display_id(db: Session, card: Card) -> str:
@@ -218,6 +220,7 @@ def create_card(
         db,
         card,
     )
+    publish_search_event("card.created", {"card_id": card.id})
 
     return card
 
@@ -289,6 +292,7 @@ def update_card(
 
     if changed_fields:
         reindex_card_search_documents(db, card.id)
+        publish_search_event("card.updated", {"card_id": card.id})
 
     return card
 
@@ -360,6 +364,7 @@ def move_card(
             db,
             card,
         )
+        publish_search_event("card.moved", {"card_id": card.id})
 
     return card
 
@@ -443,6 +448,7 @@ def archive_card(
     db.refresh(card)
 
     reindex_card_search_documents(db, card.id)
+    publish_search_event("card.archived", {"card_id": card.id})
 
 
 def restore_card(
@@ -483,6 +489,7 @@ def restore_card(
     db.refresh(card)
 
     reindex_card_search_documents(db, card.id)
+    publish_search_event("card.restored", {"card_id": card.id})
 
     return card
 
@@ -515,6 +522,12 @@ def permanently_delete_card_records(
     db.execute(
         delete(CardMember).where(
             CardMember.card_id.in_(card_ids)
+        )
+    )
+
+    db.execute(
+        delete(CardGitHubLink).where(
+            CardGitHubLink.card_id.in_(card_ids)
         )
     )
 
@@ -575,3 +588,4 @@ def permanently_delete_card(
     delete_card_from_index(
         card_id,
     )
+    publish_search_event("card.deleted", {"card_id": card_id})

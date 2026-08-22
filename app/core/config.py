@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     frontend_url: str = "http://localhost:5173"
+    kafka_bootstrap_servers: str = "localhost:9092"
+    search_events_topic: str = "projectly.search.events"
     elasticsearch_url: str = "http://localhost:9200"
     github_app_webhook_secret: str = ""
 

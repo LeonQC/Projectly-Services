@@ -8,6 +8,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.access import get_user_or_404
 from app.services.search import reindex_workspace_search_documents
+from app.services.search_events import publish_search_event
 
 
 def user_can_access_workspace(db: Session, user_id: int, workspace_id: int) -> bool:
@@ -163,6 +164,7 @@ def update_workspace(
     db.commit()
     db.refresh(workspace)
     reindex_workspace_search_documents(db, workspace.id)
+    publish_search_event("workspace.updated", {"workspace_id": workspace.id})
     return workspace
 
 
@@ -171,6 +173,7 @@ def archive_workspace(db: Session, workspace_id: int, current_user_id: int) -> N
     workspace.archived = True
     db.commit()
     reindex_workspace_search_documents(db, workspace.id)
+    publish_search_event("workspace.archived", {"workspace_id": workspace.id})
 
 
 def list_deleted_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
@@ -199,6 +202,7 @@ def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> W
     db.commit()
     db.refresh(workspace)
     reindex_workspace_search_documents(db, workspace.id)
+    publish_search_event("workspace.restored", {"workspace_id": workspace.id})
     return workspace
 
 
@@ -217,3 +221,4 @@ def permanently_delete_workspace(db: Session, workspace_id: int, current_user_id
     db.execute(delete(Invitation).where(Invitation.target_type == "workspace", Invitation.target_id == workspace_id))
     db.execute(delete(Workspace).where(Workspace.id == workspace_id))
     db.commit()
+    publish_search_event("workspace.deleted", {"workspace_id": workspace_id})

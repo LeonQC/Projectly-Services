@@ -478,6 +478,38 @@ def reindex_workspace_search_documents(db: Session, workspace_id: int) -> dict[s
     }
 
 
+def delete_workspace_search_documents(workspace_id: int) -> dict[str, int]:
+    create_search_indices()
+
+    project_response = es.delete_by_query(
+        index=PROJECT_INDEX,
+        body={"query": {"term": {"workspace_id": workspace_id}}},
+        ignore_unavailable=True,
+    )
+    card_response = es.delete_by_query(
+        index=CARD_INDEX,
+        body={"query": {"term": {"workspace_id": workspace_id}}},
+        ignore_unavailable=True,
+    )
+    comment_response = es.delete_by_query(
+        index=COMMENT_INDEX,
+        body={"query": {"term": {"workspace_id": workspace_id}}},
+        ignore_unavailable=True,
+    )
+    github_event_response = es.delete_by_query(
+        index=GITHUB_EVENT_INDEX,
+        body={"query": {"term": {"workspace_id": workspace_id}}},
+        ignore_unavailable=True,
+    )
+
+    return {
+        "projects": project_response.get("deleted", 0),
+        "cards": card_response.get("deleted", 0),
+        "comments": comment_response.get("deleted", 0),
+        "github_events": github_event_response.get("deleted", 0),
+    }
+
+
 def reindex_project_search_documents(db: Session, project_id: int) -> dict[str, int]:
     create_search_indices()
 

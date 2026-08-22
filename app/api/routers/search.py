@@ -9,12 +9,10 @@ from app.services.search import (
 )
 from app.services.workspaces import ensure_workspace_access
 
-
 router = APIRouter(
     prefix="/search",
     tags=["search"],
 )
-
 
 @router.get("/cards")
 def search_card_endpoint(
