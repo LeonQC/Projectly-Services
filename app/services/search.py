@@ -355,6 +355,61 @@ def delete_github_event_from_index(github_event_id: int) -> None:
     es.options(ignore_status=[404]).delete(index=GITHUB_EVENT_INDEX, id=str(github_event_id))
 
 
+def delete_card_search_documents(card_id: int) -> dict[str, int]:
+    create_search_indices()
+
+    delete_card_from_index(card_id)
+    comment_response = es.delete_by_query(
+        index=COMMENT_INDEX,
+        body={"query": {"term": {"card_id": card_id}}},
+        ignore_unavailable=True,
+        conflicts="proceed",
+    )
+    github_event_response = es.delete_by_query(
+        index=GITHUB_EVENT_INDEX,
+        body={"query": {"term": {"card_id": card_id}}},
+        ignore_unavailable=True,
+        conflicts="proceed",
+    )
+
+    return {
+        "cards": 1,
+        "comments": comment_response.get("deleted", 0),
+        "github_events": github_event_response.get("deleted", 0),
+    }
+
+
+def delete_project_search_documents(project_id: int) -> dict[str, int]:
+    create_search_indices()
+
+    delete_project_from_index(project_id)
+    card_response = es.delete_by_query(
+        index=CARD_INDEX,
+        body={"query": {"term": {"project_id": project_id}}},
+        ignore_unavailable=True,
+        conflicts="proceed",
+    )
+    comment_response = es.delete_by_query(
+        index=COMMENT_INDEX,
+        body={"query": {"term": {"project_id": project_id}}},
+        ignore_unavailable=True,
+        conflicts="proceed",
+    )
+    github_event_response = es.delete_by_query(
+        index=GITHUB_EVENT_INDEX,
+        body={"query": {"term": {"project_id": project_id}}},
+        ignore_unavailable=True,
+        conflicts="proceed",
+    )
+
+    return {
+        "projects": 1,
+        "cards": card_response.get("deleted", 0),
+        "comments": comment_response.get("deleted", 0),
+        "github_events": github_event_response.get("deleted", 0),
+    }
+
+
 def sync_all_cards(db: Session) -> int:
     """
     Synchronize all PostgreSQL cards into Elasticsearch.

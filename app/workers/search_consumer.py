@@ -8,9 +8,9 @@ from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.project import CardComment, GitHubEvent
 from app.services.search import (
-    delete_card_from_index,
+    delete_card_search_documents,
     delete_comment_from_index,
-    delete_project_from_index,
+    delete_project_search_documents,
     delete_workspace_search_documents,
     index_comment,
     index_github_event,
@@ -100,7 +100,7 @@ def handle_search_event(event: dict) -> None:
         if card_id is None:
             return
 
-        delete_card_from_index(int(card_id))
+        delete_card_search_documents(int(card_id))
         return
 
     if event_type == "project.deleted":
@@ -108,7 +108,7 @@ def handle_search_event(event: dict) -> None:
         if project_id is None:
             return
 
-        delete_project_from_index(int(project_id))
+        delete_project_search_documents(int(project_id))
         return
 
     if event_type in WORKSPACE_REINDEX_EVENTS:
