@@ -45,6 +45,17 @@ def list_github_app_installations(db: DbSession, current_user_id: AuthenticatedU
     )
 
 
+@router.get("/installations/reconnectable")
+def list_reconnectable_github_app_installations(
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    installations = github_app_service.list_reconnectable_installations(db, current_user_id)
+    return success_response(
+        data=[GitHubAppInstallationResponse.model_validate(installation) for installation in installations]
+    )
+
+
 @router.post("/installations/{installation_id}/claim")
 def claim_github_app_installation(
     installation_id: int,
