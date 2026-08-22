@@ -6,11 +6,12 @@ import re
 from typing import Any, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models.project import Card, GitHubAppInstallation, GitHubEvent
+from app.models.project import Card, CardGitHubLink, GitHubAppInstallation, GitHubEvent, Project
+from app.models.workspace import Workspace
 from app.services.search import index_github_event
 
 
@@ -109,11 +110,88 @@ def extract_card_reference_ids(*values: Optional[str]) -> list[int]:
     return card_ids
 
 
+def normalize_match_text(value: Optional[str]) -> str:
+    return " ".join((value or "").casefold().split())
+
+
+def event_match_text(event: GitHubEvent) -> str:
+    return normalize_match_text(" ".join(filter(None, [event.title, event.message, event.branch_name])))
+
+
+def card_display_id(db: Session, card: Card) -> str:
+    statement = (
+        select(Workspace.name, Project.name)
+        .join(Project, Project.workspace_id == Workspace.id)
+        .where(Project.id == card.project_id)
+    )
+    result = db.execute(statement).one_or_none()
+    if result is None:
+        return card.title
+
+    workspace_name, project_name = result
+    return f"{workspace_name}/{project_name}/{card.title}"
+
+
+def match_card_id_by_display_id(db: Session, event: GitHubEvent) -> Optional[int]:
+    text = event_match_text(event)
+    if not text:
+        return None
+
+    statement = (
+        select(Card.id, Workspace.name, Project.name, Card.title)
+        .join(Project, Card.project_id == Project.id)
+        .join(Workspace, Project.workspace_id == Workspace.id)
+    )
+    matches = {
+        card_id
+        for card_id, workspace_name, project_name, card_title in db.execute(statement).all()
+        if normalize_match_text(f"{workspace_name}/{project_name}/{card_title}") in text
+    }
+    if len(matches) == 1:
+        return next(iter(matches))
+    return None
+
+
 def match_card_id_for_event(db: Session, event: GitHubEvent) -> Optional[int]:
+    display_id_match = match_card_id_by_display_id(db, event)
+    if display_id_match is not None:
+        return display_id_match
+
     card_ids = extract_card_reference_ids(event.title, event.message, event.branch_name)
     for card_id in card_ids:
         if db.get(Card, card_id) is not None:
             return card_id
+
+    link_statement = select(CardGitHubLink).where(
+        CardGitHubLink.repo_owner.ilike(event.repo_owner or ""),
+        CardGitHubLink.repo_name.ilike(event.repo_name or ""),
+    )
+    matching_card_ids: set[int] = set()
+    for github_link in db.scalars(link_statement).all():
+        if github_link.commit_sha and not (
+            event.commit_sha
+            and (
+                event.commit_sha.startswith(github_link.commit_sha)
+                or github_link.commit_sha.startswith(event.commit_sha)
+            )
+        ):
+            continue
+        if github_link.pull_request_number and event.pull_request_number != github_link.pull_request_number:
+            continue
+        if github_link.branch_name and event.branch_name != github_link.branch_name:
+            continue
+        matching_card_ids.add(github_link.card_id)
+
+    if len(matching_card_ids) == 1:
+        return next(iter(matching_card_ids))
+
+    mentioned_card_ids = {
+        card.id
+        for card in db.scalars(select(Card).where(Card.id.in_(matching_card_ids))).all()
+        if normalize_match_text(card_display_id(db, card)) in event_match_text(event)
+    }
+    if len(mentioned_card_ids) == 1:
+        return next(iter(mentioned_card_ids))
     return None
 
 
@@ -311,13 +389,35 @@ def create_callback_installation(
 
 
 def claim_installation(db: Session, installation_id: int, current_user_id: int) -> GitHubAppInstallation:
-    return upsert_github_app_installation(db, installation_id, installed_by_id=current_user_id)
+    installation = get_installation_or_404(db, installation_id)
+    if installation.setup_action == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GitHub App installation not found")
+    if installation.installed_by_id not in (None, current_user_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GitHub App installation not found")
+
+    installation.installed_by_id = current_user_id
+    installation.setup_action = "install"
+    db.commit()
+    db.refresh(installation)
+    return installation
 
 
 def list_user_installations(db: Session, current_user_id: int) -> list[GitHubAppInstallation]:
     statement = (
         select(GitHubAppInstallation)
         .where(GitHubAppInstallation.installed_by_id == current_user_id)
+        .where(or_(GitHubAppInstallation.setup_action.is_(None), GitHubAppInstallation.setup_action != "deleted"))
+        .where(or_(GitHubAppInstallation.setup_action.is_(None), GitHubAppInstallation.setup_action != "disconnected"))
+        .order_by(GitHubAppInstallation.updated_at.desc(), GitHubAppInstallation.id.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_reconnectable_installations(db: Session, current_user_id: int) -> list[GitHubAppInstallation]:
+    statement = (
+        select(GitHubAppInstallation)
+        .where(GitHubAppInstallation.installed_by_id == current_user_id)
+        .where(GitHubAppInstallation.setup_action == "disconnected")
         .order_by(GitHubAppInstallation.updated_at.desc(), GitHubAppInstallation.id.desc())
     )
     return list(db.scalars(statement).all())
@@ -328,7 +428,7 @@ def disconnect_installation(db: Session, installation_id: int, current_user_id: 
     if installation.installed_by_id != current_user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GitHub App installation not found")
 
-    installation.installed_by_id = None
+    installation.setup_action = "disconnected"
     db.commit()
 
 
