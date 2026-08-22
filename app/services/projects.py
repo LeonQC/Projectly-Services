@@ -8,6 +8,7 @@ from app.models.project import (
     CardActivity,
     CardAttachment,
     CardComment,
+    CardGitHubLink,
     CardLabel,
     CardLink,
     CardMember,
@@ -26,6 +27,7 @@ from app.services.search import (
     index_project,
     reindex_project_search_documents,
 )
+from app.services.search_events import publish_search_event
 from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace, user_can_admin_workspace
 
 
@@ -89,6 +91,7 @@ def create_project(
         workspace.name if workspace is not None else None,
         workspace.archived if workspace is not None else None,
     )
+    publish_search_event("project.created", {"project_id": project.id})
     return project
 
 
@@ -116,6 +119,7 @@ def update_project(
         workspace.name if workspace is not None else None,
         workspace.archived if workspace is not None else None,
     )
+    publish_search_event("project.updated", {"project_id": project.id})
     return project
 
 
@@ -125,6 +129,7 @@ def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     project.archived = True
     db.commit()
     reindex_project_search_documents(db, project.id)
+    publish_search_event("project.archived", {"project_id": project.id})
 
 
 def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
@@ -174,6 +179,7 @@ def restore_project(db: Session, project_id: int, current_user_id: int) -> Proje
     db.commit()
     db.refresh(project)
     reindex_project_search_documents(db, project.id)
+    publish_search_event("project.restored", {"project_id": project.id})
     return project
 
 
@@ -186,6 +192,7 @@ def permanently_delete_project_records(db: Session, project_id: int) -> None:
         db.execute(delete(CardComment).where(CardComment.card_id.in_(card_ids)))
         db.execute(delete(CardLabel).where(CardLabel.card_id.in_(card_ids)))
         db.execute(delete(CardMember).where(CardMember.card_id.in_(card_ids)))
+        db.execute(delete(CardGitHubLink).where(CardGitHubLink.card_id.in_(card_ids)))
         db.execute(
             delete(CardLink).where(
                 (CardLink.source_card_id.in_(card_ids)) | (CardLink.target_card_id.in_(card_ids))
@@ -207,6 +214,7 @@ def permanently_delete_project_records(db: Session, project_id: int) -> None:
     db.execute(delete(Invitation).where(Invitation.target_type == "project", Invitation.target_id == project_id))
     db.execute(delete(Project).where(Project.id == project_id))
     delete_project_from_index(project_id)
+    publish_search_event("project.deleted", {"project_id": project_id})
 
 
 def permanently_delete_project(db: Session, project_id: int, current_user_id: int) -> None:

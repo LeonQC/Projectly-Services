@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.models.project import Card, CardGitHubLink, GitHubAppInstallation, GitHubEvent, Project
 from app.models.workspace import Workspace
 from app.services.search import index_github_event
+from app.services.search_events import publish_search_event
 
 
 CARD_REFERENCE_PATTERN = re.compile(
@@ -325,7 +326,7 @@ def store_github_events(
         for github_event in events:
             db.refresh(github_event)
             index_github_event(db, github_event)
-
+            publish_search_event("github_event.created", {"github_event_id": github_event.id})
     return events
 
 

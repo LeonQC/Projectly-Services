@@ -9,6 +9,7 @@ from app.schemas.comment import CardCommentResponse
 from app.services.access import ensure_card_access, ensure_comment_access
 from app.services.activities import create_card_activity
 from app.services.search import delete_comment_from_index, index_comment
+from app.services.search_events import publish_search_event
 
 
 def build_comment_response(comment: CardComment, attachments: list[CardAttachment]) -> CardCommentResponse:
@@ -105,6 +106,7 @@ def create_card_comment(
     for attachment in attachments:
         db.refresh(attachment)
     index_comment(db, comment)
+    publish_search_event("comment.created", {"comment_id": comment.id})
     return build_comment_response(comment, attachments)
 
 
@@ -130,6 +132,7 @@ def update_card_comment(
     db.commit()
     db.refresh(comment)
     index_comment(db, comment)
+    publish_search_event("comment.updated", {"comment_id": comment.id})
     attachments = get_comment_attachments(db, [comment.id]).get(comment.id, [])
     return build_comment_response(comment, attachments)
 
@@ -148,3 +151,4 @@ def delete_card_comment(db: Session, comment_id: int, current_user_id: int) -> N
     )
     db.commit()
     delete_comment_from_index(comment_id)
+    publish_search_event("comment.deleted", {"comment_id": comment_id})
