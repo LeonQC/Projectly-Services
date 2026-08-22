@@ -7,7 +7,6 @@ from app.models.project import Project
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.access import get_user_or_404
-from app.services.search import reindex_workspace_search_documents
 from app.services.search_events import publish_search_event
 
 
@@ -163,7 +162,6 @@ def update_workspace(
 
     db.commit()
     db.refresh(workspace)
-    reindex_workspace_search_documents(db, workspace.id)
     publish_search_event("workspace.updated", {"workspace_id": workspace.id})
     return workspace
 
@@ -172,7 +170,6 @@ def archive_workspace(db: Session, workspace_id: int, current_user_id: int) -> N
     workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
     workspace.archived = True
     db.commit()
-    reindex_workspace_search_documents(db, workspace.id)
     publish_search_event("workspace.archived", {"workspace_id": workspace.id})
 
 
@@ -201,7 +198,6 @@ def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> W
     workspace.archived = False
     db.commit()
     db.refresh(workspace)
-    reindex_workspace_search_documents(db, workspace.id)
     publish_search_event("workspace.restored", {"workspace_id": workspace.id})
     return workspace
 

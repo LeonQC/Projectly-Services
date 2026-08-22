@@ -7,7 +7,6 @@ from app.models.project import Card, CardLabel
 from app.schemas.card_label import CardLabelCreate, CardLabelUpdate
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
-from app.services.search import index_card
 from app.services.search_events import publish_search_event
 
 
@@ -65,7 +64,6 @@ def create_card_label(
     db.refresh(label)
     card = db.get(Card, card_id)
     if card is not None:
-        index_card(db, card)
         publish_search_event("card.labels_changed", {"card_id": card.id})
     return label
 
@@ -104,7 +102,6 @@ def update_card_label(
     db.refresh(label)
     card = db.get(Card, card_id)
     if card is not None:
-        index_card(db, card)
         publish_search_event("card.labels_changed", {"card_id": card.id})
     return label
 
@@ -124,5 +121,4 @@ def delete_card_label(db: Session, label_id: int, current_user_id: int) -> None:
     db.commit()
     card = db.get(Card, card_id)
     if card is not None:
-        index_card(db, card)
         publish_search_event("card.labels_changed", {"card_id": card.id})
