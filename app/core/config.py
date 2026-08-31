@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     search_events_topic: str = "projectly.search.events"
     elasticsearch_url: str = "http://localhost:9200"
     github_app_webhook_secret: str = ""
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    supabase_storage_bucket: str = "projectly-attachments"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
