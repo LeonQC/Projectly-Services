@@ -51,6 +51,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Local attachment uploads
+uploads/
+
 # Translations
 *.mo
 *.pot

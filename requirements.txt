@@ -29,3 +29,4 @@ watchfiles==1.1.1
 websockets==15.0.1
 elasticsearch>=9,<10
 confluent-kafka>=2.6,<3
+python-multipart==0.0.20
