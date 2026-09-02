@@ -29,6 +29,7 @@ watchfiles==1.1.1
 websockets==15.0.1
 elasticsearch>=9,<10
 confluent-kafka>=2.6,<3
+docling==2.124.0
 python-multipart==0.0.20
 supabase==2.31.0
 supabase-auth==2.31.0
