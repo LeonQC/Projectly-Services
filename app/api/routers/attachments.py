@@ -4,8 +4,9 @@ from fastapi.responses import FileResponse
 from app.api.deps import AuthenticatedUserId, DbSession
 from app.core.responses import success_response
 from app.schemas.attachment import CardAttachmentCreate, CardAttachmentResponse
+from app.schemas.attachment_document import AttachmentDocumentResponse
 from app.services import attachments as attachments_service
-
+from app.services import attachment_extraction as attachment_extraction_service
 
 router = APIRouter(tags=["cards-detail"])
 
@@ -58,3 +59,33 @@ def download_card_attachment(
         attachment_id,
         current_user_id,
     )
+
+@router.post("/attachments/{attachment_id}/extract")
+def extract_attachment_document(
+    attachment_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    document = attachment_extraction_service.extract_attachment_document(
+        db,
+        attachment_id,
+        current_user_id,
+    )
+    return success_response(
+        data=AttachmentDocumentResponse.model_validate(document),
+        message="Attachment extracted",
+    )
+
+
+@router.get("/attachments/{attachment_id}/document")
+def get_attachment_document(
+    attachment_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    document = attachment_extraction_service.get_attachment_document(
+        db,
+        attachment_id,
+        current_user_id,
+    )
+    return success_response(data=AttachmentDocumentResponse.model_validate(document))

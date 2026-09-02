@@ -14,6 +14,7 @@ from app.models.project import (
     Project,
     ProjectGuest,
     Sprint,
+    AttachmentDocument,
 )
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -22,6 +23,7 @@ __all__ = [
     "Card",
     "CardActivity",
     "CardAttachment",
+    "AttachmentDocument",
     "CardComment",
     "CardGitHubLink",
     "CardLabel",

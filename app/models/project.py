@@ -3,9 +3,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
-
 from app.db.base import Base, IdMixin, TimestampMixin
 
 
@@ -173,6 +172,18 @@ class CardAttachment(IdMixin, TimestampMixin, Base):
     file_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     uploaded_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+
+
+class AttachmentDocument(IdMixin, TimestampMixin, Base):
+    __tablename__ = "attachment_documents"
+
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("card_attachments.id"), index=True, nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    extraction_status: Mapped[str] = mapped_column(String(30), nullable=False, default="completed")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class CardLabel(IdMixin, TimestampMixin, Base):
