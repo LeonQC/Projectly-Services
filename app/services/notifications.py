@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import re
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.notification import Invitation, Notification
@@ -64,6 +64,15 @@ def create_comment_mention_notifications(
             source_id=comment_id,
         )
         db.add(notification)
+
+
+def delete_comment_mention_notifications(db: Session, comment_id: int) -> None:
+    db.execute(
+        delete(Notification).where(
+            Notification.source_type == "card_comment",
+            Notification.source_id == comment_id,
+        )
+    )
 
 
 def build_notification_response(
@@ -135,10 +144,14 @@ def list_my_notifications(db: Session, current_user_id: int) -> list[Notificatio
 
         if notification.source_type == "card_comment" and notification.source_id is not None:
             comment = db.get(CardComment, notification.source_id)
+            if comment is None:
+                continue
             if comment is not None:
                 comment_card = db.get(Card, comment.card_id)
                 if comment_card is not None:
                     comment_project = db.get(Project, comment_card.project_id)
+            if comment_card is None or comment_project is None:
+                continue
 
         responses.append(
             build_notification_response(

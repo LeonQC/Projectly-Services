@@ -1,15 +1,23 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.auth import UserResponse, normalize_email
+
+
+MemberInviteRole = Literal["member", "admin", "guest"]
 
 
 class MemberInviteRequest(BaseModel):
     user_id: Optional[int] = None
     email: Optional[str] = Field(default=None, min_length=3, max_length=255)
-    role: str = Field(default="member", min_length=1, max_length=20)
+    role: MemberInviteRole = "member"
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, value: str) -> str:
+        return value.strip().lower()
 
     @model_validator(mode="after")
     def validate_invited_user(self) -> "MemberInviteRequest":
@@ -17,11 +25,6 @@ class MemberInviteRequest(BaseModel):
             raise ValueError("Either user_id or email is required")
         if self.email is not None:
             self.email = normalize_email(self.email)
-        self.role = self.role.strip().lower()
-        if not self.role:
-            raise ValueError("Role is required")
-        if self.role == "owner":
-            raise ValueError("Owner role cannot be assigned through invite")
         return self
 
 
@@ -34,6 +37,15 @@ class WorkspaceMemberResponse(BaseModel):
     user: UserResponse
     created_at: datetime
     updated_at: datetime
+
+
+class WorkspaceMemberRoleUpdate(BaseModel):
+    role: Literal["member", "admin"]
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class ProjectMemberResponse(BaseModel):

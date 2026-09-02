@@ -9,7 +9,12 @@ from app.models.project import ProjectGuest
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.auth import UserResponse
-from app.schemas.member import MemberInviteRequest, ProjectMemberResponse, WorkspaceMemberResponse
+from app.schemas.member import (
+    MemberInviteRequest,
+    ProjectMemberResponse,
+    WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
+)
 from app.services.access import get_user_or_404
 from app.services.auth import get_user_by_email
 from app.services.projects import get_project_or_404, user_can_access_project
@@ -55,6 +60,12 @@ def create_workspace_member(
     payload: MemberInviteRequest,
 ) -> WorkspaceMemberResponse:
     workspace = ensure_workspace_admin(db, current_user_id, workspace_id)
+    if payload.role == "guest":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Workspace member role must be member or admin",
+        )
+
     invited_user = get_invited_user(db, payload)
     if invited_user.id == workspace.owner_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User is already the workspace owner")
@@ -85,6 +96,30 @@ def delete_workspace_member(db: Session, member_id: int, current_user_id: int) -
 
     db.delete(member)
     db.commit()
+
+
+def update_workspace_member_role(
+    db: Session,
+    member_id: int,
+    current_user_id: int,
+    payload: WorkspaceMemberRoleUpdate,
+) -> WorkspaceMemberResponse:
+    member = db.get(WorkspaceMember, member_id)
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
+
+    workspace = ensure_workspace_access(db, current_user_id, member.workspace_id)
+    if workspace.owner_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Workspace owner access required")
+
+    if member.user_id == workspace.owner_id or member.role == "owner":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Workspace owner role cannot be changed")
+
+    member.role = payload.role
+    db.commit()
+    db.refresh(member)
+    user = get_user_or_404(db, member.user_id)
+    return build_workspace_member_response(member, user)
 
 
 def build_project_member_response(

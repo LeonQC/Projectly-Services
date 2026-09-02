@@ -1,19 +1,25 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.auth import UserResponse, normalize_email
 
 
 InvitationTargetType = Literal["workspace", "project"]
 InvitationStatus = Literal["pending", "accepted", "declined"]
+InvitationRole = Literal["member", "admin", "guest"]
 
 
 class InvitationCreate(BaseModel):
     user_id: Optional[int] = None
     email: Optional[str] = Field(default=None, min_length=3, max_length=255)
-    role: str = Field(default="member", min_length=1, max_length=20)
+    role: InvitationRole = "member"
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, value: str) -> str:
+        return value.strip().lower()
 
     @model_validator(mode="after")
     def validate_invitee(self) -> "InvitationCreate":
@@ -21,9 +27,6 @@ class InvitationCreate(BaseModel):
             raise ValueError("Either user_id or email is required")
         if self.email is not None:
             self.email = normalize_email(self.email)
-        self.role = self.role.strip().lower()
-        if not self.role or self.role == "owner":
-            raise ValueError("Invalid invitation role")
         return self
 
 

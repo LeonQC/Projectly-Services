@@ -153,7 +153,7 @@ def update_workspace(
     current_user_id: int,
     payload: WorkspaceUpdate,
 ) -> Workspace:
-    workspace = ensure_workspace_owner(db, current_user_id, workspace_id)
+    workspace = ensure_workspace_admin(db, current_user_id, workspace_id)
     update_data = payload.model_dump(exclude_unset=True)
     if "name" in update_data:
         ensure_workspace_name_available(db, current_user_id, update_data["name"], exclude_workspace_id=workspace_id)
