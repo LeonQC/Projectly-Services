@@ -7,6 +7,8 @@ from app.schemas.attachment import CardAttachmentCreate, CardAttachmentResponse
 from app.schemas.attachment_document import AttachmentDocumentResponse
 from app.services import attachments as attachments_service
 from app.services import attachment_extraction as attachment_extraction_service
+from app.schemas.attachment_chunk import AttachmentChunkResponse
+from app.services import attachment_chunking as attachment_chunking_service
 
 router = APIRouter(tags=["cards-detail"])
 
@@ -89,3 +91,35 @@ def get_attachment_document(
         current_user_id,
     )
     return success_response(data=AttachmentDocumentResponse.model_validate(document))
+
+@router.post("/attachments/{attachment_id}/chunk")
+def chunk_attachment_document(
+    attachment_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    chunks = attachment_chunking_service.chunk_attachment_document(
+        db,
+        attachment_id,
+        current_user_id,
+    )
+    return success_response(
+        data=[AttachmentChunkResponse.model_validate(chunk) for chunk in chunks],
+        message="Attachment chunked",
+    )
+
+
+@router.get("/attachments/{attachment_id}/chunks")
+def list_attachment_chunks(
+    attachment_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    chunks = attachment_chunking_service.list_attachment_chunks(
+        db,
+        attachment_id,
+        current_user_id,
+    )
+    return success_response(
+        data=[AttachmentChunkResponse.model_validate(chunk) for chunk in chunks]
+    )

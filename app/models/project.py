@@ -185,6 +185,23 @@ class AttachmentDocument(IdMixin, TimestampMixin, Base):
     extraction_status: Mapped[str] = mapped_column(String(30), nullable=False, default="completed")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+class AttachmentChunk(IdMixin, TimestampMixin, Base):
+    __tablename__ = "attachment_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "attachment_document_id",
+            "chunk_index",
+            name="uq_attachment_chunks_document_chunk_index",
+        ),
+    )
+
+    attachment_document_id: Mapped[int] = mapped_column(ForeignKey("attachment_documents.id"), index=True, nullable=False)
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("card_attachments.id"), index=True, nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
 class CardLabel(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_labels"
