@@ -137,6 +137,9 @@ def update_card_comment(
 def delete_card_comment(db: Session, comment_id: int, current_user_id: int) -> None:
     comment = ensure_comment_access(db, current_user_id, comment_id)
     card_id = comment.card_id
+    from app.services.notifications import delete_comment_mention_notifications
+
+    delete_comment_mention_notifications(db, comment.id)
     db.execute(delete(CardAttachment).where(CardAttachment.comment_id == comment.id))
     db.delete(comment)
     create_card_activity(

@@ -58,6 +58,12 @@ def create_workspace_invitation(
     payload: InvitationCreate,
 ) -> InvitationResponse:
     workspace = ensure_workspace_admin(db, current_user_id, workspace_id)
+    if payload.role == "guest":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Workspace invitation role must be member or admin",
+        )
+
     invitee = get_invitee(db, payload)
     if invitee.id == workspace.owner_id or user_can_access_workspace(db, invitee.id, workspace_id):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has workspace access")
