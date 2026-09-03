@@ -22,3 +22,20 @@ class RagRetrieveResponse(BaseModel):
     query: str
     top_k: int
     results: list[RagRetrieveResult]
+
+class RagAskRequest(RagRetrieveRequest):
+    pass
+
+
+class RagAskSource(BaseModel):
+    chunk_id: int
+    attachment_id: int
+    card_id: int
+    chunk_index: int
+    distance: float | None = None
+
+
+class RagAskResponse(BaseModel):
+    query: str
+    answer: str
+    sources: list[RagAskSource]
