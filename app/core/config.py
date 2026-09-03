@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = "projectly-attachments"
     openai_api_key: str | None = None
     embedding_model: str = "text-embedding-3-small"
+    chat_model: str = "gpt-4.1-mini"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
