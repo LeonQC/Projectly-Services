@@ -18,6 +18,7 @@ from app.api.routers import (
     sprints,
     user_settings,
     workspaces,
+    rag,
 )
 from app.core.config import settings
 from app.core.responses import success_response
@@ -47,6 +48,7 @@ app.include_router(github_app.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 app.include_router(user_settings.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
+app.include_router(rag.router, prefix=settings.api_prefix)
 
 @app.get("/health")
 def health_check():
