@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, IdMixin, TimestampMixin
@@ -185,6 +186,7 @@ class AttachmentDocument(IdMixin, TimestampMixin, Base):
     extraction_status: Mapped[str] = mapped_column(String(30), nullable=False, default="completed")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+
 class AttachmentChunk(IdMixin, TimestampMixin, Base):
     __tablename__ = "attachment_chunks"
     __table_args__ = (
@@ -202,6 +204,8 @@ class AttachmentChunk(IdMixin, TimestampMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
+
 
 class CardLabel(IdMixin, TimestampMixin, Base):
     __tablename__ = "card_labels"
