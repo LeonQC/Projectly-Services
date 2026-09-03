@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "projectly-attachments"
+    openai_api_key: str | None = None
+    embedding_model: str = "text-embedding-3-small"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

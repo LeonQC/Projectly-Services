@@ -9,6 +9,7 @@ from app.services import attachments as attachments_service
 from app.services import attachment_extraction as attachment_extraction_service
 from app.schemas.attachment_chunk import AttachmentChunkResponse
 from app.services import attachment_chunking as attachment_chunking_service
+from app.services import attachment_embeddings as attachment_embeddings_service
 
 router = APIRouter(tags=["cards-detail"])
 
@@ -123,3 +124,17 @@ def list_attachment_chunks(
     return success_response(
         data=[AttachmentChunkResponse.model_validate(chunk) for chunk in chunks]
     )
+
+
+@router.post("/attachments/{attachment_id}/embed")
+def embed_attachment_chunks(
+    attachment_id: int,
+    db: DbSession,
+    current_user_id: AuthenticatedUserId,
+) -> dict:
+    result = attachment_embeddings_service.embed_attachment_chunks(
+        db,
+        attachment_id,
+        current_user_id,
+    )
+    return success_response(data=result, message="Attachment chunks embedded")
