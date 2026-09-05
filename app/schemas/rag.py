@@ -16,6 +16,8 @@ class RagRetrieveResult(BaseModel):
     chunk_index: int
     content: str
     distance: float | None = None
+    bm25_score: float | None = None
+    rerank_score: float | None = None
 
 
 class RagRetrieveResponse(BaseModel):
@@ -33,6 +35,8 @@ class RagAskSource(BaseModel):
     card_id: int
     chunk_index: int
     distance: float | None = None
+    bm25_score: float | None = None
+    rerank_score: float | None = None
 
 
 class RagAskResponse(BaseModel):

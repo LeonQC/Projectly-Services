@@ -1,3 +1,17 @@
+# chunking: content_markdown -> chunks -> attachment_chunks, Markdown 变成适合检索的小 chunks 
+"""
+输入：attachment_id
+做：
+1. 查 attachment_documents
+2. 读取 content_markdown
+3. 按 chunk_size / overlap 切成小段
+4. 删除旧 chunks
+5. 保存新 chunks 到 attachment_chunks
+
+输出：
+多条 attachment_chunks
+"""
+
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -5,8 +19,8 @@ from sqlalchemy.orm import Session
 from app.models.project import AttachmentChunk, AttachmentDocument
 from app.services.attachments import ensure_attachment_access
 
-DEFAULT_CHUNK_SIZE = 1000
-DEFAULT_CHUNK_OVERLAP = 150
+DEFAULT_CHUNK_SIZE = 300
+DEFAULT_CHUNK_OVERLAP = 50
 
 
 def split_markdown_into_chunks(
@@ -76,6 +90,11 @@ def chunk_attachment_document(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Extract attachment document before chunking",
+        )
+    if document.extraction_status != "completed" or not document.content_markdown:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attachment document extraction is not completed",
         )
 
     chunk_texts = split_markdown_into_chunks(document.content_markdown)

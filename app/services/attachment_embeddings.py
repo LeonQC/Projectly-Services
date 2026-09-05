@@ -1,5 +1,7 @@
+from functools import lru_cache
+
 from fastapi import HTTPException, status
-from openai import OpenAI
+from sentence_transformers import SentenceTransformer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -8,18 +10,38 @@ from app.models.project import AttachmentChunk
 from app.services.attachments import ensure_attachment_access
 
 
+@lru_cache(maxsize=1)
+def get_local_embedding_model() -> SentenceTransformer:
+    return SentenceTransformer(settings.embedding_model)
+
+
+def create_embeddings(inputs: str | list[str]) -> list[list[float]]:
+    model = get_local_embedding_model()
+    normalized_inputs = [inputs] if isinstance(inputs, str) else inputs
+    embeddings = model.encode(
+        normalized_inputs,
+        normalize_embeddings=True,
+    ).tolist()
+
+    for embedding in embeddings:
+        if len(embedding) != settings.embedding_dimensions:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"Embedding dimension mismatch: expected {settings.embedding_dimensions}, "
+                    f"got {len(embedding)}"
+                ),
+            )
+
+    return embeddings
+
+
 def embed_attachment_chunks(
     db: Session,
     attachment_id: int,
     current_user_id: int,
 ) -> dict[str, int]:
     ensure_attachment_access(db, current_user_id, attachment_id)
-
-    if not settings.openai_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OPENAI_API_KEY is not configured",
-        )
 
     chunks = list(
         db.scalars(
@@ -42,14 +64,10 @@ def embed_attachment_chunks(
             "skipped_chunks": len(chunks),
         }
 
-    client = OpenAI(api_key=settings.openai_api_key)
-    response = client.embeddings.create(
-        model=settings.embedding_model,
-        input=[chunk.content for chunk in chunks_to_embed],
-    )
+    embeddings = create_embeddings([chunk.content for chunk in chunks_to_embed])
 
-    for chunk, embedding_data in zip(chunks_to_embed, response.data, strict=True):
-        chunk.embedding = embedding_data.embedding
+    for chunk, embedding in zip(chunks_to_embed, embeddings, strict=True):
+        chunk.embedding = embedding
 
     db.commit()
 

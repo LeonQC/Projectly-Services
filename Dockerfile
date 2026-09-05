@@ -4,6 +4,13 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+        libglib2.0-0 \
+        libgl1 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libxcb1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

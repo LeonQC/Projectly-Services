@@ -3,11 +3,10 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import CardAttachment
-from app.schemas.attachment import CardAttachmentCreate
+from app.models.project import AttachmentChunk, AttachmentDocument, CardAttachment, RagIngestionJob
 from app.services.activities import create_card_activity
 from app.services.attachment_storage import (
     delete_attachment_file,
@@ -16,25 +15,26 @@ from app.services.attachment_storage import (
 )
 from app.services.cards import ensure_card_access
 
-
+# 生成 Supabase Storage里的文件路径key
+# card_attachments/17-abc123-rag-learning-summary.pdf
 def build_attachment_storage_key(attachment_id: int, file_name: str) -> str:
     safe_name = Path(file_name or "attachment").name
     return f"card_attachments/{attachment_id}-{uuid4().hex}-{safe_name}"
 
-
+# 根据attachment_id查card_attachments;查不到返回404
 def get_attachment_or_404(db: Session, attachment_id: int) -> CardAttachment:
     attachment = db.get(CardAttachment, attachment_id)
     if attachment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found")
     return attachment
 
-
+# 检查用户权限访问attachment
 def ensure_attachment_access(db: Session, user_id: int, attachment_id: int) -> CardAttachment:
     attachment = get_attachment_or_404(db, attachment_id)
     ensure_card_access(db, user_id, attachment.card_id)
     return attachment
 
-
+# 列出某张card下面的attachments
 def list_card_attachments(db: Session, card_id: int, current_user_id: int) -> list[CardAttachment]:
     ensure_card_access(db, current_user_id, card_id)
     statement = (
@@ -44,18 +44,7 @@ def list_card_attachments(db: Session, card_id: int, current_user_id: int) -> li
     )
     return list(db.scalars(statement).all())
 
-
-def create_card_attachment(
-    db: Session,
-    card_id: int,
-    current_user_id: int,
-    payload: CardAttachmentCreate,
-) -> CardAttachment:
-    raise HTTPException(
-        status_code=status.HTTP_410_GONE,
-        detail="Use the attachment upload endpoint instead",
-    )
-
+# 上传附件
 def upload_card_attachment(
     db: Session,
     card_id: int,
@@ -94,21 +83,21 @@ def upload_card_attachment(
 
     db.commit()
     db.refresh(attachment)
-    return attachment
 
+    from app.services.rag_ingestion import create_rag_ingestion_job, enqueue_rag_ingestion_job
 
+    job = create_rag_ingestion_job(db, attachment.id, current_user_id)
+    enqueue_rag_ingestion_job(job)
+
+    return attachment   
+
+# 下载 / 打开附件
 def get_attachment_download_response(
     db: Session,
     attachment_id: int,
     current_user_id: int,
 ) -> Response:
     attachment = ensure_attachment_access(db, current_user_id, attachment_id)
-
-    if attachment.file_url.startswith("/api/attachments/"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Attachment was uploaded before object storage migration",
-        )
 
     content = download_attachment_file(attachment.file_url)
 
@@ -120,6 +109,7 @@ def get_attachment_download_response(
         },
     )
 
+# 删除附件
 def delete_card_attachment(db: Session, attachment_id: int, current_user_id: int) -> None:
     attachment = ensure_attachment_access(db, current_user_id, attachment_id)
     card_id = attachment.card_id
@@ -129,6 +119,9 @@ def delete_card_attachment(db: Session, attachment_id: int, current_user_id: int
     if storage_key:
         delete_attachment_file(storage_key)
 
+    db.execute(delete(AttachmentChunk).where(AttachmentChunk.attachment_id == attachment.id))
+    db.execute(delete(AttachmentDocument).where(AttachmentDocument.attachment_id == attachment.id))
+    db.execute(delete(RagIngestionJob).where(RagIngestionJob.attachment_id == attachment.id))
     db.delete(attachment)
     create_card_activity(
         db,
