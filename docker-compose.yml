@@ -63,6 +63,23 @@ services:
     volumes:
       - projectly_elasticsearch_data:/usr/share/elasticsearch/data
 
+  rag-service:
+    build: .
+    container_name: projectly-rag-service
+    command: python -u -m app.workers.rag_consumer
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      DATABASE_URL: postgresql+psycopg://projectly:projectly@postgres:5432/projectly
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RAG_EVENTS_TOPIC: projectly.rag.events
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_STORAGE_BUCKET: projectly-attachments
+      EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
+      EMBEDDING_DIMENSIONS: 384
+
 volumes:
   projectly_postgres_data:
   projectly_elasticsearch_data:
