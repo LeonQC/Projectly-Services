@@ -1,10 +1,11 @@
-# answer: 
+# answer: merge chunks into context string & build prompt & OpenAI chat model
 from fastapi import HTTPException, status
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.schemas.rag import RagAskRequest, RagAskResponse, RagAskSource
+from app.services.rag_context import build_structured_rag_context
 from app.services.rag_retrieval import retrieve_attachment_chunks
 
 
@@ -35,6 +36,13 @@ def answer_rag_question(
             detail="OPENAI_API_KEY is not configured",
         )
 
+    structured_context = build_structured_rag_context(
+        db,
+        current_user_id,
+        card_id=payload.card_id,
+        project_id=payload.project_id,
+        workspace_id=payload.workspace_id,
+    )
     retrieval = retrieve_attachment_chunks(db, current_user_id, payload)
 
     sources = [
@@ -44,29 +52,36 @@ def answer_rag_question(
             card_id=result.card_id,
             chunk_index=result.chunk_index,
             distance=result.distance,
+            bm25_score=result.bm25_score,
+            rerank_score=result.rerank_score,
         )
         for result in retrieval.results
     ]
 
     contents = [result.content for result in retrieval.results]
-    context = build_rag_context(sources, contents)
+    attachment_context = build_rag_context(sources, contents)
 
-    if not context:
+    if not structured_context and not attachment_context:
         return RagAskResponse(
             query=payload.query,
-            answer="I don't know based on the available attachments.",
+            answer="I don't know based on the available Projectly data.",
             sources=[],
         )
 
-    prompt = f"""Answer the user's question using only the provided Projectly attachment context.
+    prompt = f"""Answer the user's question using only the provided Projectly context.
 
 Rules:
-- If the context does not contain the answer, say: I don't know based on the available attachments.
+- Use the structured Projectly data first when the question asks about cards, projects, workspaces, epics, sprints, labels, comments, GitHub events, or attachment metadata.
+- Use the retrieved attachment context when the question asks about PDF/file contents.
+- If neither context contains the answer, say: I don't know based on the available Projectly data.
 - Keep the answer concise.
 - Do not use outside knowledge.
 
-Context:
-{context}
+Structured Projectly data:
+{structured_context or "No structured Projectly data was provided."}
+
+Retrieved attachment context:
+{attachment_context or "No relevant attachment chunks were found."}
 
 Question:
 {payload.query}

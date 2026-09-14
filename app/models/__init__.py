@@ -13,9 +13,11 @@ from app.models.project import (
     GitHubEvent,
     Project,
     ProjectGuest,
+    RagIngestionJob,
     Sprint,
     AttachmentDocument,
     AttachmentChunk,
+    RagChunk,
 )
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -26,6 +28,7 @@ __all__ = [
     "CardAttachment",
     "AttachmentDocument",
     "AttachmentChunk",
+    "RagChunk",
     "CardComment",
     "CardGitHubLink",
     "CardLabel",
@@ -38,6 +41,7 @@ __all__ = [
     "Notification",
     "Project",
     "ProjectGuest",
+    "RagIngestionJob",
     "Sprint",
     "User",
     "Workspace",

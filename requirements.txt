@@ -15,7 +15,7 @@ psycopg==3.2.13
 psycopg-binary==3.2.13
 pgvector>=0.3,<1
 pydantic==2.13.4
-pydantic-settings==2.11.0
+pydantic-settings>=2.14.0,<3
 pydantic_core==2.46.4
 python-dotenv==1.2.1
 PyJWT==2.13.0
@@ -31,7 +31,7 @@ watchfiles==1.1.1
 websockets==15.0.1
 elasticsearch>=9,<10
 confluent-kafka>=2.6,<3
-docling==2.124.0
+docling[rapidocr]==2.124.0
 python-multipart==0.0.20
 supabase==2.31.0
 supabase-auth==2.31.0
@@ -39,3 +39,4 @@ supabase-functions==2.31.0
 storage3==2.31.0
 postgrest==2.31.0
 realtime==2.31.0
+sentence-transformers>=3,<4

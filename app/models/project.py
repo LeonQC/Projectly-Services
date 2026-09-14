@@ -177,14 +177,49 @@ class CardAttachment(IdMixin, TimestampMixin, Base):
 
 class AttachmentDocument(IdMixin, TimestampMixin, Base):
     __tablename__ = "attachment_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "extraction_status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_attachment_documents_extraction_status",
+        ),
+    )
 
     attachment_id: Mapped[int] = mapped_column(ForeignKey("card_attachments.id"), index=True, nullable=False)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    content_json: Mapped[dict] = mapped_column(JSON, nullable=False)
-    content_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    content_markdown: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extraction_status: Mapped[str] = mapped_column(String(30), nullable=False, default="completed")
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class RagChunk(IdMixin, TimestampMixin, Base):
+    __tablename__ = "rag_chunks"
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('attachment', 'card', 'comment', 'project', 'workspace', 'epic', 'sprint', 'github_event')",
+            name="ck_rag_chunks_source_type",
+        ),
+        UniqueConstraint(
+            "source_type",
+            "source_id",
+            "chunk_index",
+            name="uq_rag_chunks_source_chunk",
+        ),
+    )
+
+    workspace_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workspaces.id"), index=True, nullable=True)
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    card_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cards.id"), index=True, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    source_subtype: Mapped[Optional[str]] = mapped_column(String(80), index=True, nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(384), nullable=True)
+    chunk_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
 
 
 class AttachmentChunk(IdMixin, TimestampMixin, Base):
@@ -204,7 +239,26 @@ class AttachmentChunk(IdMixin, TimestampMixin, Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(1536), nullable=True)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(384), nullable=True)
+
+
+class RagIngestionJob(IdMixin, TimestampMixin, Base):
+    __tablename__ = "rag_ingestion_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_rag_ingestion_jobs_status",
+        ),
+    )
+
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("card_attachments.id"), index=True, nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
+    requested_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True, nullable=False)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CardLabel(IdMixin, TimestampMixin, Base):

@@ -20,8 +20,13 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "projectly-attachments"
     openai_api_key: str | None = None
-    embedding_model: str = "text-embedding-3-small"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    retrieval_candidate_limit: int = 30
+    bm25_candidate_limit: int = 30
     chat_model: str = "gpt-4.1-mini"
+    rag_events_topic: str = "projectly.rag.events"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
