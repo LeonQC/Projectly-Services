@@ -48,6 +48,7 @@ def main() -> None:
             "group.id": "projectly-rag-service",
             "auto.offset.reset": "earliest",
             "enable.auto.commit": False,
+            "max.poll.interval.ms": 1800000,
         }
     )
     consumer.subscribe([settings.rag_events_topic])
