@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.project import AttachmentChunk, Card, Project
 from app.schemas.rag import RagRetrieveRequest, RagRetrieveResponse, RagRetrieveResult
-from app.services.attachment_embeddings import create_embeddings
+from app.services.embedding_client import create_embeddings
 from app.services.cards import ensure_card_access
 from app.services.projects import ensure_project_access
 from app.services.workspaces import ensure_workspace_access
