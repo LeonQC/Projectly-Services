@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.models.project import Card, CardComment, Project, RagChunk
 from app.services.attachment_chunking import split_markdown_into_chunks
-from app.services.attachment_embeddings import create_embeddings
+from app.services.embedding_client import create_embeddings
 
 
 def delete_rag_chunks_for_source(
