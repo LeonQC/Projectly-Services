@@ -194,6 +194,34 @@ class AttachmentDocument(IdMixin, TimestampMixin, Base):
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
+class RagChunk(IdMixin, TimestampMixin, Base):
+    __tablename__ = "rag_chunks"
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('attachment', 'card', 'comment', 'project', 'workspace', 'epic', 'sprint', 'github_event')",
+            name="ck_rag_chunks_source_type",
+        ),
+        UniqueConstraint(
+            "source_type",
+            "source_id",
+            "chunk_index",
+            name="uq_rag_chunks_source_chunk",
+        ),
+    )
+
+    workspace_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workspaces.id"), index=True, nullable=True)
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id"), index=True, nullable=True)
+    card_id: Mapped[Optional[int]] = mapped_column(ForeignKey("cards.id"), index=True, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    source_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    source_subtype: Mapped[Optional[str]] = mapped_column(String(80), index=True, nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(384), nullable=True)
+    chunk_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
+
+
 class AttachmentChunk(IdMixin, TimestampMixin, Base):
     __tablename__ = "attachment_chunks"
     __table_args__ = (
