@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.project import AttachmentChunk, AttachmentDocument, CardAttachment, RagIngestionJob
+from app.services.rag_indexing import index_attachment
 from app.services.attachment_chunking import chunk_attachment_document
 from app.services.attachment_embeddings import embed_attachment_chunks
 from app.services.attachment_extraction import extract_attachment_document
@@ -129,6 +130,7 @@ def run_rag_ingestion_job(
         extract_attachment_document(db, attachment.id, current_user_id, force=force)
         chunk_attachment_document(db, attachment.id, current_user_id)
         embed_attachment_chunks(db, attachment.id, current_user_id)
+        index_attachment(db, attachment.id)
         db.refresh(job)
         mark_job_completed(db, job)
         db.refresh(job)

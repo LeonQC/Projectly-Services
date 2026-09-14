@@ -14,10 +14,18 @@ index_card
 index_comment
   comment -> chunks -> embeddings -> rag_chunks
 """
+from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import Card, CardComment, Project, RagChunk
+from app.models.project import (
+    AttachmentDocument,
+    Card,
+    CardAttachment,
+    CardComment,
+    Project,
+    RagChunk,
+)
 from app.services.attachment_chunking import split_markdown_into_chunks
 from app.services.embedding_client import create_embeddings
 
@@ -154,6 +162,79 @@ def index_comment(
             chunk_metadata={
                 "author_id": comment.author_id,
                 "card_title": card.title,
+            },
+        )
+        for index, (chunk_text, embedding) in enumerate(zip(chunk_texts, embeddings, strict=True))
+    ]
+
+    db.add_all(chunks)
+    db.commit()
+
+    for chunk in chunks:
+        db.refresh(chunk)
+
+    return chunks
+
+def index_attachment(
+    db: Session,
+    attachment_id: int,
+) -> list[RagChunk]:
+    attachment = db.get(CardAttachment, attachment_id)
+    if attachment is None:
+        return []
+
+    document = db.query(AttachmentDocument).filter(
+        AttachmentDocument.attachment_id == attachment.id
+    ).one_or_none()
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Extract attachment document before indexing",
+        )
+
+    if document.extraction_status != "completed" or not document.content_markdown:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attachment document extraction is not completed",
+        )
+
+    card = db.get(Card, attachment.card_id)
+    if card is None:
+        return []
+
+    project = db.get(Project, card.project_id)
+    if project is None:
+        return []
+
+    chunk_texts = split_markdown_into_chunks(document.content_markdown)
+
+    if not chunk_texts:
+        delete_rag_chunks_for_source(db, "attachment", attachment.id)
+        db.commit()
+        return []
+
+    embeddings = create_embeddings(chunk_texts)
+
+    delete_rag_chunks_for_source(db, "attachment", attachment.id)
+
+    chunks = [
+        RagChunk(
+            workspace_id=project.workspace_id,
+            project_id=project.id,
+            card_id=card.id,
+            source_type="attachment",
+            source_id=attachment.id,
+            source_subtype="attachment_pdf",
+            chunk_index=index,
+            title=attachment.file_name,
+            content=chunk_text,
+            embedding=embedding,
+            chunk_metadata={
+                "attachment_id": attachment.id,
+                "file_name": attachment.file_name,
+                "file_type": attachment.file_type,
+                "file_size": attachment.file_size,
             },
         )
         for index, (chunk_text, embedding) in enumerate(zip(chunk_texts, embeddings, strict=True))
