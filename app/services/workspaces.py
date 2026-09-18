@@ -32,6 +32,33 @@ def user_can_access_workspace(db: Session, user_id: int, workspace_id: int) -> b
     return bool(db.scalar(statement))
 
 
+def get_accessible_workspace_ids(
+    db: Session,
+    user_id: int,
+) -> list[int]:
+    get_user_or_404(db, user_id)
+
+    member_workspace_ids = select(
+        WorkspaceMember.workspace_id
+    ).where(
+        WorkspaceMember.user_id == user_id
+    )
+
+    statement = (
+        select(Workspace.id)
+        .where(
+            Workspace.archived.is_(False),
+            or_(
+                Workspace.owner_id == user_id,
+                Workspace.id.in_(member_workspace_ids),
+            ),
+        )
+        .order_by(Workspace.id.asc())
+    )
+
+    return list(db.scalars(statement).all())
+
+
 def get_workspace_or_404(db: Session, workspace_id: int) -> Workspace:
     workspace = db.get(Workspace, workspace_id)
     if workspace is None or workspace.archived:

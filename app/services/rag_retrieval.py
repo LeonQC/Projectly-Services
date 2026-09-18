@@ -5,7 +5,6 @@ PGVector + Elasticsearch BM25 → RRF → CrossEncoder
 from __future__ import annotations
 from functools import lru_cache
 
-from fastapi import HTTPException, status
 from sentence_transformers import CrossEncoder
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
@@ -20,43 +19,68 @@ from app.schemas.rag import (
 from app.services.cards import ensure_card_access
 from app.services.projects import ensure_project_access
 from app.services.rag_embedding import create_embeddings
-from app.services.workspaces import ensure_workspace_access
+from app.services.workspaces import (
+    ensure_workspace_access,
+    get_accessible_workspace_ids,
+)
 from app.services.rag_search_index import search_rag_chunks_bm25
 
 
 RRF_K = 60
 
 # scope and permission
-def check_scope_access(
+def resolve_accessible_workspace_ids(
     db: Session,
     user_id: int,
     payload: RagRetrieveRequest,
-) -> None:
+) -> list[int] | None:
     if payload.card_id is not None:
         ensure_card_access(db, user_id, payload.card_id)
-    elif payload.project_id is not None:
+        return None
+
+    if payload.project_id is not None:
         ensure_project_access(db, user_id, payload.project_id)
-    elif payload.workspace_id is not None:
-        ensure_workspace_access(db, user_id, payload.workspace_id)
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide card_id, project_id, or workspace_id",
+        return None
+
+    if payload.workspace_id is not None:
+        ensure_workspace_access(
+            db,
+            user_id,
+            payload.workspace_id,
         )
+        return None
+
+    return get_accessible_workspace_ids(
+        db,
+        user_id,
+    )
 
 
 def apply_scope(
     statement: Select,
     payload: RagRetrieveRequest,
+    workspace_ids: list[int] | None = None,
 ) -> Select:
     if payload.card_id is not None:
-        return statement.where(RagChunk.card_id == payload.card_id)
+        return statement.where(
+            RagChunk.card_id == payload.card_id
+        )
+
     if payload.project_id is not None:
-        return statement.where(RagChunk.project_id == payload.project_id)
+        return statement.where(
+            RagChunk.project_id == payload.project_id
+        )
+
     if payload.workspace_id is not None:
         return statement.where(
             RagChunk.workspace_id == payload.workspace_id
         )
+
+    if workspace_ids is not None:
+        return statement.where(
+            RagChunk.workspace_id.in_(workspace_ids)
+        )
+
     return statement
 
 
@@ -87,11 +111,13 @@ def retrieve_rag_chunks(
     current_user_id: int,
     payload: RagRetrieveRequest,
 ) -> RagRetrieveResponse:
-    check_scope_access(db, current_user_id, payload)
-
-    scoped_statement = apply_scope(select(RagChunk), payload)
-    scoped_chunks = list(db.scalars(scoped_statement).all())
-    chunks_by_id = {chunk.id: chunk for chunk in scoped_chunks}
+    accessible_workspace_ids = (
+        resolve_accessible_workspace_ids(
+            db,
+            current_user_id,
+            payload,
+        )
+    )
 
     query_vector = create_embeddings(payload.query)[0]
     distance = RagChunk.embedding.cosine_distance(query_vector)
@@ -102,6 +128,7 @@ def retrieve_rag_chunks(
         .order_by(distance.asc())
         .limit(settings.retrieval_candidate_limit),
         payload,
+        accessible_workspace_ids,
     )
     vector_rows = db.execute(vector_statement).all()
     vector_ids = [chunk.id for chunk, _ in vector_rows]
@@ -116,6 +143,7 @@ def retrieve_rag_chunks(
         workspace_id=payload.workspace_id,
         project_id=payload.project_id,
         card_id=payload.card_id,
+        workspace_ids=accessible_workspace_ids,
     )
     bm25_ids = list(bm25_scores)
 
@@ -126,11 +154,33 @@ def retrieve_rag_chunks(
         reverse=True,
     )[:settings.retrieval_candidate_limit]
 
+    candidate_statement = apply_scope(
+        select(RagChunk).where(
+            RagChunk.id.in_(candidate_ids)
+        ),
+        payload,
+        accessible_workspace_ids,
+    )
+    candidate_chunks = list(
+        db.scalars(candidate_statement).all()
+    )
+    chunks_by_id = {
+        chunk.id: chunk
+        for chunk in candidate_chunks
+    }
+
     candidates = [
         chunks_by_id[chunk_id]
         for chunk_id in candidate_ids
         if chunk_id in chunks_by_id
     ]
+
+    if not candidates:
+        return RagRetrieveResponse(
+            query=payload.query,
+            top_k=payload.top_k,
+            results=[],
+        )
 
     rerank_values = get_reranker().predict(
         [(payload.query, chunk.content) for chunk in candidates]

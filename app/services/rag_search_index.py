@@ -228,8 +228,11 @@ def search_rag_chunks_bm25(
     workspace_id: int | None = None,
     project_id: int | None = None,
     card_id: int | None = None,
+    workspace_ids: list[int] | None = None,
 ) -> dict[int, float]:
     filters: list[dict] = []
+    if workspace_ids == []:
+        return {}
 
     if card_id is not None:
         filters.append(
@@ -255,7 +258,14 @@ def search_rag_chunks_bm25(
                 }
             }
         )
-
+    elif workspace_ids is not None:
+        filters.append(
+            {
+                "terms": {
+                    "workspace_id": workspace_ids,
+                }
+            }
+        )
     try:
         response = es.search(
             index=RAG_CHUNK_INDEX,
