@@ -1,5 +1,4 @@
-from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, model_validator
 
 class RagRetrieveRequest(BaseModel):
     workspace_id: int | None = None
@@ -7,6 +6,25 @@ class RagRetrieveRequest(BaseModel):
     card_id: int | None = None
     query: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "RagRetrieveRequest":
+        scope_values = [
+            self.workspace_id,
+            self.project_id,
+            self.card_id,
+        ]
+
+        if sum(
+            value is not None
+            for value in scope_values
+        ) > 1:
+            raise ValueError(
+                "Provide at most one of workspace_id, "
+                "project_id, or card_id"
+            )
+
+        return self
 
 class RagRetrieveResult(BaseModel):
     chunk_id: int
