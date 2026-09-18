@@ -1,0 +1,7 @@
+-r requirements.txt
+
+ragas==0.4.3
+langchain==0.3.27
+langchain-community==0.3.27
+langchain-core==0.3.80
+langchain-openai==0.3.35
