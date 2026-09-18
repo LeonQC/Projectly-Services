@@ -26,6 +26,10 @@ from app.services.rag_indexing import (
     index_sprint,
     index_workspace,
 )
+from app.services.rag_search_index import (
+    delete_rag_scope_documents,
+    replace_rag_source_documents,
+)
 
 
 SOURCE_INDEXERS = {
@@ -47,7 +51,16 @@ def handle_source_upsert(payload: dict) -> None:
         raise ValueError("Invalid RAG source upsert payload")
 
     with SessionLocal() as db:
-        SOURCE_INDEXERS[source_type](db, int(source_id))
+        chunks = SOURCE_INDEXERS[source_type](
+            db,
+            int(source_id),
+        )
+
+        replace_rag_source_documents(
+            source_type,
+            int(source_id),
+            chunks,
+        )
 
 # delete
 def handle_source_delete(payload: dict) -> None:
@@ -72,8 +85,15 @@ def handle_source_delete(payload: dict) -> None:
         )
 
     with SessionLocal() as db:
-        db.execute(delete(RagChunk).where(condition))
+        db.execute(
+            delete(RagChunk).where(condition)
+        )
         db.commit()
+
+    delete_rag_scope_documents(
+        source_type,
+        source_id,
+    )
 
 # 事件分发
 def handle_rag_index_event(event: dict) -> None:
