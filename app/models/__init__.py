@@ -16,7 +16,6 @@ from app.models.project import (
     RagIngestionJob,
     Sprint,
     AttachmentDocument,
-    AttachmentChunk,
     RagChunk,
 )
 from app.models.user import User
@@ -27,7 +26,6 @@ __all__ = [
     "CardActivity",
     "CardAttachment",
     "AttachmentDocument",
-    "AttachmentChunk",
     "RagChunk",
     "CardComment",
     "CardGitHubLink",

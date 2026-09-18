@@ -15,10 +15,13 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     search_events_topic: str = "projectly.search.events"
     elasticsearch_url: str = "http://localhost:9200"
+
     github_app_webhook_secret: str = ""
+
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     supabase_storage_bucket: str = "projectly-attachments"
+
     openai_api_key: str | None = None
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
@@ -26,7 +29,8 @@ class Settings(BaseSettings):
     retrieval_candidate_limit: int = 30
     bm25_candidate_limit: int = 30
     chat_model: str = "gpt-4.1-mini"
-    rag_events_topic: str = "projectly.rag.events"
+    rag_index_events_topic: str = "projectly.rag.index.events"
+    rag_ingestion_events_topic: str = "projectly.rag.ingestion.events"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

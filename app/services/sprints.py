@@ -1,14 +1,17 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import Card, Epic, Sprint
+from app.models.project import Card, Epic, Sprint, RagChunk
 from app.schemas.sprint import CardSprintUpdate, SprintCreate, SprintUpdate
 from app.services.cards import ensure_card_access
 from app.services.cards import permanently_delete_card_records
 from app.services.epics import ensure_epic_access, get_epic_or_404
 from app.services.projects import ensure_project_access
-
+from app.services.rag_events import (
+    publish_rag_source_delete,
+    publish_rag_source_upsert,
+)
 
 def get_sprint_or_404(db: Session, sprint_id: int) -> Sprint:
     sprint = db.get(Sprint, sprint_id)
@@ -47,6 +50,7 @@ def create_sprint(db: Session, epic_id: int, current_user_id: int, payload: Spri
     db.add(sprint)
     db.commit()
     db.refresh(sprint)
+    publish_rag_source_upsert("sprint", sprint.id)
     return sprint
 
 
@@ -68,6 +72,7 @@ def update_sprint(db: Session, sprint_id: int, current_user_id: int, payload: Sp
 
     db.commit()
     db.refresh(sprint)
+    publish_rag_source_upsert("sprint", sprint.id)
     return sprint
 
 
@@ -75,6 +80,7 @@ def archive_sprint(db: Session, sprint_id: int, current_user_id: int) -> None:
     sprint = ensure_sprint_access(db, current_user_id, sprint_id)
     sprint.archived = True
     db.commit()
+    publish_rag_source_upsert("sprint", sprint.id)
 
 
 def restore_sprint(db: Session, sprint_id: int, current_user_id: int) -> Sprint:
@@ -86,20 +92,53 @@ def restore_sprint(db: Session, sprint_id: int, current_user_id: int) -> Sprint:
     sprint.archived = False
     db.commit()
     db.refresh(sprint)
+    publish_rag_source_upsert("sprint", sprint.id)
     return sprint
 
 
-def permanently_delete_sprint(db: Session, sprint_id: int, current_user_id: int) -> None:
+def permanently_delete_sprint(
+    db: Session,
+    sprint_id: int,
+    current_user_id: int,
+) -> None:
     sprint = db.get(Sprint, sprint_id)
     if sprint is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprint not found")
-    epic = get_epic_or_404(db, sprint.epic_id)
-    ensure_project_access(db, current_user_id, epic.project_id)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sprint not found",
+        )
 
-    card_ids = list(db.scalars(select(Card.id).where(Card.sprint_id == sprint_id)).all())
+    epic = get_epic_or_404(db, sprint.epic_id)
+    ensure_project_access(
+        db,
+        current_user_id,
+        epic.project_id,
+    )
+
+    card_ids = list(
+        db.scalars(
+            select(Card.id).where(
+                Card.sprint_id == sprint_id
+            )
+        ).all()
+    )
+
     permanently_delete_card_records(db, card_ids)
+
+    db.execute(
+        delete(RagChunk).where(
+            RagChunk.source_type == "sprint",
+            RagChunk.source_id == sprint_id,
+        )
+    )
+
     db.delete(sprint)
     db.commit()
+
+    for card_id in card_ids:
+        publish_rag_source_delete("card", card_id)
+
+    publish_rag_source_delete("sprint", sprint_id)
 
 
 def list_sprint_cards(db: Session, sprint_id: int, current_user_id: int) -> list[Card]:
@@ -118,6 +157,7 @@ def update_card_sprint(db: Session, card_id: int, current_user_id: int, payload:
         card.sprint_id = None
         db.commit()
         db.refresh(card)
+        publish_rag_source_upsert("card", card.id)
         return card
 
     sprint = ensure_sprint_access(db, current_user_id, payload.sprint_id)
@@ -131,4 +171,5 @@ def update_card_sprint(db: Session, card_id: int, current_user_id: int, payload:
     card.sprint_id = sprint.id
     db.commit()
     db.refresh(card)
+    publish_rag_source_upsert("card", card.id)
     return card

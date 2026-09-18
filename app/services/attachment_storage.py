@@ -1,3 +1,18 @@
+"""
+UploadFile
+→ Supabase Storage
+
+Supabase Storage
+→ 下载 PDF bytes
+
+删除 Attachment
+→ 删除 Supabase object
+
+upload_attachment_file()
+download_attachment_file()
+delete_attachment_file()
+"""
+
 from supabase import create_client
 from app.core.config import settings
 

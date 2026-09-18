@@ -12,6 +12,9 @@
 输出：
 content_json
 content_markdown
+
+extract_attachment_document()
+get_attachment_document()
 """
 
 import json

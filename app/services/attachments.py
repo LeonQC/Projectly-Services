@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models.project import AttachmentChunk, AttachmentDocument, CardAttachment, RagIngestionJob
+from app.models.project import AttachmentDocument, CardAttachment, RagChunk, RagIngestionJob
 from app.services.activities import create_card_activity
 from app.services.attachment_storage import (
     delete_attachment_file,
@@ -14,6 +14,9 @@ from app.services.attachment_storage import (
     upload_attachment_file,
 )
 from app.services.cards import ensure_card_access
+from app.services.rag_events import (
+    publish_rag_source_delete,
+)
 
 # 生成 Supabase Storage里的文件路径key
 # card_attachments/17-abc123-rag-learning-summary.pdf
@@ -116,10 +119,7 @@ def delete_card_attachment(db: Session, attachment_id: int, current_user_id: int
     file_name = attachment.file_name
     storage_key = attachment.file_url
 
-    if storage_key:
-        delete_attachment_file(storage_key)
-
-    db.execute(delete(AttachmentChunk).where(AttachmentChunk.attachment_id == attachment.id))
+    db.execute(delete(RagChunk).where(RagChunk.source_type =="attachment", RagChunk.source_id == attachment.id))
     db.execute(delete(AttachmentDocument).where(AttachmentDocument.attachment_id == attachment.id))
     db.execute(delete(RagIngestionJob).where(RagIngestionJob.attachment_id == attachment.id))
     db.delete(attachment)
@@ -131,3 +131,7 @@ def delete_card_attachment(db: Session, attachment_id: int, current_user_id: int
         metadata={"attachment_id": attachment_id, "file_name": file_name},
     )
     db.commit()
+    publish_rag_source_delete("attachment", attachment_id)
+
+    if storage_key:
+        delete_attachment_file(storage_key)

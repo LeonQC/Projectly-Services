@@ -11,6 +11,7 @@ from app.services.access import get_user_or_404
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
 from app.services.projects import get_project_or_404, user_can_access_project
+from app.services.rag_events import publish_rag_source_upsert
 
 
 def get_card_member_or_404(db: Session, member_id: int) -> CardMember:
@@ -76,6 +77,7 @@ def create_card_member(
     )
     db.commit()
     db.refresh(member)
+    publish_rag_source_upsert("card", card_id)
     return build_card_member_response(member, member_user)
 
 
@@ -93,3 +95,4 @@ def delete_card_member(db: Session, member_id: int, current_user_id: int) -> Non
         metadata={"card_member_id": member_id, "user_id": user_id},
     )
     db.commit()
+    publish_rag_source_upsert("card", card_id)

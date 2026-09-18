@@ -222,26 +222,6 @@ class RagChunk(IdMixin, TimestampMixin, Base):
     chunk_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column("metadata", JSON, nullable=True)
 
 
-class AttachmentChunk(IdMixin, TimestampMixin, Base):
-    __tablename__ = "attachment_chunks"
-    __table_args__ = (
-        UniqueConstraint(
-            "attachment_document_id",
-            "chunk_index",
-            name="uq_attachment_chunks_document_chunk_index",
-        ),
-    )
-
-    attachment_document_id: Mapped[int] = mapped_column(ForeignKey("attachment_documents.id"), index=True, nullable=False)
-    attachment_id: Mapped[int] = mapped_column(ForeignKey("card_attachments.id"), index=True, nullable=False)
-    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id"), index=True, nullable=False)
-    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    token_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    page_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(384), nullable=True)
-
-
 class RagIngestionJob(IdMixin, TimestampMixin, Base):
     __tablename__ = "rag_ingestion_jobs"
     __table_args__ = (
