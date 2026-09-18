@@ -1,12 +1,8 @@
 """
-PGVector + Python BM25 → RRF → CrossEncoder
+PGVector + Elasticsearch BM25 → RRF → CrossEncoder
 """
 
 from __future__ import annotations
-
-import math
-import re
-from collections import Counter
 from functools import lru_cache
 
 from fastapi import HTTPException, status
@@ -25,16 +21,10 @@ from app.services.cards import ensure_card_access
 from app.services.projects import ensure_project_access
 from app.services.rag_embedding import create_embeddings
 from app.services.workspaces import ensure_workspace_access
+from app.services.rag_search_index import search_rag_chunks_bm25
 
 
-WORD_PATTERN = re.compile(
-    r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]"
-)
 RRF_K = 60
-
-
-def tokenize(text: str) -> list[str]:
-    return WORD_PATTERN.findall(text.lower())
 
 # scope and permission
 def check_scope_access(
@@ -69,52 +59,6 @@ def apply_scope(
         )
     return statement
 
-# BM25
-def calculate_bm25(
-    query: str,
-    chunks: list[RagChunk],
-) -> dict[int, float]:
-    query_tokens = tokenize(query)
-    documents = [tokenize(chunk.content) for chunk in chunks]
-
-    if not query_tokens or not documents:
-        return {}
-
-    average_length = (
-        sum(len(document) for document in documents)
-        / len(documents)
-    )
-    document_frequency: Counter[str] = Counter()
-
-    for document in documents:
-        document_frequency.update(set(document))
-
-    scores: dict[int, float] = {}
-    total_documents = len(documents)
-    k1 = 1.5
-    b = 0.75
-
-    for chunk, document in zip(chunks, documents, strict=True):
-        frequencies = Counter(document)
-        score = 0.0
-
-        for term in query_tokens:
-            frequency = frequencies[term]
-            if frequency == 0:
-                continue
-
-            df = document_frequency[term]
-            idf = math.log(
-                1 + (total_documents - df + 0.5) / (df + 0.5)
-            )
-            denominator = frequency + k1 * (
-                1 - b + b * len(document) / average_length
-            )
-            score += idf * frequency * (k1 + 1) / denominator
-
-        scores[chunk.id] = score
-
-    return scores
 
 # vector, RRF, Reranker
 @lru_cache(maxsize=1)
@@ -166,16 +110,14 @@ def retrieve_rag_chunks(
         for chunk, value in vector_rows
     }
 
-    bm25_scores = calculate_bm25(payload.query, scoped_chunks)
-    bm25_ids = [
-        chunk_id
-        for chunk_id, score in sorted(
-            bm25_scores.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-        if score > 0
-    ][:settings.bm25_candidate_limit]
+    bm25_scores = search_rag_chunks_bm25(
+        payload.query,
+        limit=settings.bm25_candidate_limit,
+        workspace_id=payload.workspace_id,
+        project_id=payload.project_id,
+        card_id=payload.card_id,
+    )
+    bm25_ids = list(bm25_scores)
 
     rrf_scores = reciprocal_rank_fusion(vector_ids, bm25_ids)
     candidate_ids = sorted(

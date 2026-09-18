@@ -93,11 +93,12 @@ services:
     depends_on:
       - postgres
       - kafka
+      - elasticsearch
     environment:
       DATABASE_URL: postgresql+psycopg://projectly:projectly@postgres:5432/projectly
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       RAG_INDEX_EVENTS_TOPIC: projectly.rag.index.events
-
+      ELASTICSEARCH_URL: http://elasticsearch:9200
       EMBEDDING_MODEL: sentence-transformers/all-MiniLM-L6-v2
       EMBEDDING_DIMENSIONS: 384
     volumes:
