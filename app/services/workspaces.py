@@ -3,11 +3,16 @@ from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.notification import Invitation
-from app.models.project import Project
+from app.models.project import Project, RagChunk
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.workspace import WorkspaceCreate, WorkspaceUpdate
 from app.services.access import get_user_or_404
 from app.services.search_events import publish_search_event
+from app.services.rag_events import (
+    publish_rag_source_delete,
+    publish_rag_source_upsert,
+)
+
 
 
 def user_can_access_workspace(db: Session, user_id: int, workspace_id: int) -> bool:
@@ -144,6 +149,7 @@ def create_workspace(db: Session, current_user_id: int, payload: WorkspaceCreate
     db.add(owner_member)
     db.commit()
     db.refresh(workspace)
+    publish_rag_source_upsert("workspace", workspace.id)
     return workspace
 
 
@@ -163,6 +169,7 @@ def update_workspace(
     db.commit()
     db.refresh(workspace)
     publish_search_event("workspace.updated", {"workspace_id": workspace.id})
+    publish_rag_source_upsert("workspace", workspace.id)
     return workspace
 
 
@@ -171,6 +178,7 @@ def archive_workspace(db: Session, workspace_id: int, current_user_id: int) -> N
     workspace.archived = True
     db.commit()
     publish_search_event("workspace.archived", {"workspace_id": workspace.id})
+    publish_rag_source_upsert("workspace", workspace.id)
 
 
 def list_deleted_workspaces(db: Session, current_user_id: int) -> list[Workspace]:
@@ -199,6 +207,7 @@ def restore_workspace(db: Session, workspace_id: int, current_user_id: int) -> W
     db.commit()
     db.refresh(workspace)
     publish_search_event("workspace.restored", {"workspace_id": workspace.id})
+    publish_rag_source_upsert("workspace", workspace.id)
     return workspace
 
 
@@ -215,6 +224,8 @@ def permanently_delete_workspace(db: Session, workspace_id: int, current_user_id
 
     db.execute(delete(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id))
     db.execute(delete(Invitation).where(Invitation.target_type == "workspace", Invitation.target_id == workspace_id))
+    db.execute(delete(RagChunk).where(RagChunk.workspace_id == workspace_id))
     db.execute(delete(Workspace).where(Workspace.id == workspace_id))
     db.commit()
     publish_search_event("workspace.deleted", {"workspace_id": workspace_id})
+    publish_rag_source_delete("workspace", workspace_id)

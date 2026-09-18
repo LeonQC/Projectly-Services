@@ -7,6 +7,7 @@ from app.models.project import Card, CardLink
 from app.schemas.card_link import CardLinkCreate, CardLinkResponse, LinkedCardResponse
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
+from app.services.rag_events import publish_rag_source_upsert
 
 
 def get_card_link_or_404(db: Session, link_id: int) -> CardLink:
@@ -94,6 +95,8 @@ def create_card_link(
     )
     db.commit()
     db.refresh(link)
+    publish_rag_source_upsert("card", source_card.id)
+    publish_rag_source_upsert("card", target_card.id)
     return build_card_link_response(link, source_card, target_card)
 
 
@@ -117,3 +120,5 @@ def delete_card_link(db: Session, link_id: int, current_user_id: int) -> None:
         },
     )
     db.commit()
+    publish_rag_source_upsert("card", source_card_id)
+    publish_rag_source_upsert("card", target_card_id)

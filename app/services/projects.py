@@ -16,13 +16,17 @@ from app.models.project import (
     Project,
     ProjectGuest,
     Sprint,
+    RagChunk,
 )
 from app.models.workspace import Workspace
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.access import get_user_or_404
 from app.services.search_events import publish_search_event
 from app.services.workspaces import ensure_workspace_access, ensure_workspace_admin, user_can_access_workspace, user_can_admin_workspace
-
+from app.services.rag_events import (
+    publish_rag_source_delete,
+    publish_rag_source_upsert,
+)
 
 def get_project_or_404(db: Session, project_id: int) -> Project:
     project = db.get(Project, project_id)
@@ -79,6 +83,7 @@ def create_project(
     db.commit()
     db.refresh(project)
     publish_search_event("project.created", {"project_id": project.id})
+    publish_rag_source_upsert("project", project.id)
     return project
 
 
@@ -98,9 +103,32 @@ def update_project(
     for field, value in update_data.items():
         setattr(project, field, value)
 
+    epic_ids = list(
+        db.scalars(
+            select(Epic.id).where(Epic.project_id == project.id)
+        ).all()
+    )
+
+    sprint_ids = []
+    if epic_ids:
+        sprint_ids = list(
+            db.scalars(
+                select(Sprint.id).where(Sprint.epic_id.in_(epic_ids))
+            ).all()
+        )
+
     db.commit()
     db.refresh(project)
+
     publish_search_event("project.updated", {"project_id": project.id})
+    publish_rag_source_upsert("project", project.id)
+
+    if "name" in update_data:
+        for epic_id in epic_ids:
+            publish_rag_source_upsert("epic", epic_id)
+
+        for sprint_id in sprint_ids:
+            publish_rag_source_upsert("sprint", sprint_id)
     return project
 
 
@@ -110,6 +138,7 @@ def archive_project(db: Session, project_id: int, current_user_id: int) -> None:
     project.archived = True
     db.commit()
     publish_search_event("project.archived", {"project_id": project.id})
+    publish_rag_source_upsert("project", project.id)
 
 
 def list_deleted_projects(db: Session, current_user_id: int) -> list[Project]:
@@ -159,24 +188,19 @@ def restore_project(db: Session, project_id: int, current_user_id: int) -> Proje
     db.commit()
     db.refresh(project)
     publish_search_event("project.restored", {"project_id": project.id})
+    publish_rag_source_upsert("project", project.id)
     return project
 
 
 def permanently_delete_project_records(db: Session, project_id: int) -> None:
-    card_ids = list(db.scalars(select(Card.id).where(Card.project_id == project_id)).all())
-    if card_ids:
-        db.execute(delete(CardAttachment).where(CardAttachment.card_id.in_(card_ids)))
-        db.execute(delete(CardComment).where(CardComment.card_id.in_(card_ids)))
-        db.execute(delete(CardLabel).where(CardLabel.card_id.in_(card_ids)))
-        db.execute(delete(CardMember).where(CardMember.card_id.in_(card_ids)))
-        db.execute(delete(CardGitHubLink).where(CardGitHubLink.card_id.in_(card_ids)))
-        db.execute(
-            delete(CardLink).where(
-                (CardLink.source_card_id.in_(card_ids)) | (CardLink.target_card_id.in_(card_ids))
-            )
-        )
-        db.execute(delete(CardActivity).where(CardActivity.card_id.in_(card_ids)))
-        db.execute(delete(Card).where(Card.id.in_(card_ids)))
+    from app.services.cards import permanently_delete_card_records
+    card_ids = list(
+        db.scalars(
+            select(Card.id).where(Card.project_id == project_id)
+        ).all()
+    )
+    permanently_delete_card_records(db, card_ids)
+
     epic_ids = list(db.scalars(select(Epic.id).where(Epic.project_id == project_id)).all())
     if epic_ids:
         db.execute(delete(Sprint).where(Sprint.epic_id.in_(epic_ids)))
@@ -184,14 +208,29 @@ def permanently_delete_project_records(db: Session, project_id: int) -> None:
 
     db.execute(delete(ProjectGuest).where(ProjectGuest.project_id == project_id))
     db.execute(delete(Invitation).where(Invitation.target_type == "project", Invitation.target_id == project_id))
+    db.execute(delete(RagChunk).where(RagChunk.project_id == project_id))
     db.execute(delete(Project).where(Project.id == project_id))
-    publish_search_event("project.deleted", {"project_id": project_id})
 
 
-def permanently_delete_project(db: Session, project_id: int, current_user_id: int) -> None:
+def permanently_delete_project(
+    db: Session,
+    project_id: int,
+    current_user_id: int,
+) -> None:
     project = db.get(Project, project_id)
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
     ensure_workspace_admin(db, current_user_id, project.workspace_id)
+
     permanently_delete_project_records(db, project_id)
     db.commit()
+
+    publish_search_event(
+        "project.deleted",
+        {"project_id": project_id},
+    )
+    publish_rag_source_delete("project", project_id)

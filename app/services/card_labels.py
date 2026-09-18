@@ -8,6 +8,7 @@ from app.schemas.card_label import CardLabelCreate, CardLabelUpdate
 from app.services.activities import create_card_activity
 from app.services.cards import ensure_card_access
 from app.services.search_events import publish_search_event
+from app.services.rag_events import publish_rag_source_upsert
 
 
 def get_card_label_or_404(db: Session, label_id: int) -> CardLabel:
@@ -65,6 +66,7 @@ def create_card_label(
     card = db.get(Card, card_id)
     if card is not None:
         publish_search_event("card.labels_changed", {"card_id": card.id})
+        publish_rag_source_upsert("card", card.id)
     return label
 
 
@@ -103,6 +105,7 @@ def update_card_label(
     card = db.get(Card, card_id)
     if card is not None:
         publish_search_event("card.labels_changed", {"card_id": card.id})
+        publish_rag_source_upsert("card", card.id)
     return label
 
 
@@ -122,3 +125,4 @@ def delete_card_label(db: Session, label_id: int, current_user_id: int) -> None:
     card = db.get(Card, card_id)
     if card is not None:
         publish_search_event("card.labels_changed", {"card_id": card.id})
+        publish_rag_source_upsert("card", card.id)

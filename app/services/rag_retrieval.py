@@ -1,3 +1,7 @@
+"""
+PGVector + Python BM25 → RRF → CrossEncoder
+"""
+
 from __future__ import annotations
 
 import math
@@ -12,192 +16,173 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.project import RagChunk
-from app.schemas.rag import RagRetrieveRequest, RagRetrieveResponse, RagRetrieveResult
-from app.services.embedding_client import create_embeddings
+from app.schemas.rag import (
+    RagRetrieveRequest,
+    RagRetrieveResponse,
+    RagRetrieveResult,
+)
 from app.services.cards import ensure_card_access
 from app.services.projects import ensure_project_access
+from app.services.rag_embedding import create_embeddings
 from app.services.workspaces import ensure_workspace_access
 
 
-WORD_PATTERN = re.compile(r"[a-zA-Z0-9_]+")
+WORD_PATTERN = re.compile(
+    r"[a-zA-Z0-9_]+|[\u4e00-\u9fff]"
+)
+RRF_K = 60
 
 
 def tokenize(text: str) -> list[str]:
     return WORD_PATTERN.findall(text.lower())
 
-
-def bm25_scores(query: str, chunks: list[RagChunk]) -> dict[int, float]:
-    tokenized_query = tokenize(query)
-    if not tokenized_query or not chunks:
-        return {}
-
-    documents = [tokenize(chunk.content) for chunk in chunks]
-    average_length = sum(len(document) for document in documents) / len(documents)
-    document_frequency: Counter[str] = Counter()
-
-    for document in documents:
-        document_frequency.update(set(document))
-
-    k1 = 1.5
-    b = 0.75
-    total_documents = len(documents)
-    scores: dict[int, float] = {}
-
-    for chunk, document in zip(chunks, documents, strict=True):
-        if not document:
-            scores[chunk.id] = 0.0
-            continue
-
-        term_frequency = Counter(document)
-        score = 0.0
-        document_length = len(document)
-
-        for term in tokenized_query:
-            if term_frequency[term] == 0:
-                continue
-
-            idf = math.log(
-                1
-                + (total_documents - document_frequency[term] + 0.5)
-                / (document_frequency[term] + 0.5)
-            )
-            numerator = term_frequency[term] * (k1 + 1)
-            denominator = term_frequency[term] + k1 * (
-                1 - b + b * document_length / average_length
-            )
-            score += idf * numerator / denominator
-
-        scores[chunk.id] = score
-
-    return scores
-
-
-@lru_cache(maxsize=1)
-def get_reranker_model() -> CrossEncoder:
-    return CrossEncoder(settings.reranker_model)
-
-
-def apply_scope_access_check(
+# scope and permission
+def check_scope_access(
     db: Session,
-    current_user_id: int,
+    user_id: int,
     payload: RagRetrieveRequest,
 ) -> None:
     if payload.card_id is not None:
-        ensure_card_access(db, current_user_id, payload.card_id)
-        return
-
-    if payload.project_id is not None:
-        ensure_project_access(db, current_user_id, payload.project_id)
-        return
-
-    if payload.workspace_id is not None:
-        ensure_workspace_access(db, current_user_id, payload.workspace_id)
-        return
-
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Provide card_id, project_id, or workspace_id",
-    )
+        ensure_card_access(db, user_id, payload.card_id)
+    elif payload.project_id is not None:
+        ensure_project_access(db, user_id, payload.project_id)
+    elif payload.workspace_id is not None:
+        ensure_workspace_access(db, user_id, payload.workspace_id)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide card_id, project_id, or workspace_id",
+        )
 
 
-def apply_scope_filters(
+def apply_scope(
     statement: Select,
     payload: RagRetrieveRequest,
 ) -> Select:
     if payload.card_id is not None:
         return statement.where(RagChunk.card_id == payload.card_id)
-
     if payload.project_id is not None:
         return statement.where(RagChunk.project_id == payload.project_id)
-
     if payload.workspace_id is not None:
-        return statement.where(RagChunk.workspace_id == payload.workspace_id)
-
+        return statement.where(
+            RagChunk.workspace_id == payload.workspace_id
+        )
     return statement
 
-def get_scoped_chunks(db: Session, payload: RagRetrieveRequest) -> list[RagChunk]:
-    statement = select(RagChunk).order_by(
-        RagChunk.source_type.asc(),
-        RagChunk.source_id.asc(),
-        RagChunk.chunk_index.asc(),
-    )
-    statement = apply_scope_filters(statement, payload)
-    return list(db.scalars(statement).all())
-
-
-def get_vector_candidates(
-    db: Session,
-    payload: RagRetrieveRequest,
-) -> dict[int, tuple[RagChunk, float]]:
-    query_embedding = create_embeddings(payload.query)[0]
-    distance = RagChunk.embedding.cosine_distance(query_embedding)
-
-    statement = (
-        select(RagChunk, distance.label("distance"))
-        .where(RagChunk.embedding.is_not(None))
-        .order_by(distance.asc())
-        .limit(max(payload.top_k, settings.retrieval_candidate_limit))
-    )
-    statement = apply_scope_filters(statement, payload)
-
-    return {
-        chunk.id: (
-            chunk,
-            float(row_distance) if row_distance is not None else 1.0,
-        )
-        for chunk, row_distance in db.execute(statement).all()
-    }
-
-
-def get_bm25_candidates(
+# BM25
+def calculate_bm25(
     query: str,
-    scoped_chunks: list[RagChunk],
+    chunks: list[RagChunk],
 ) -> dict[int, float]:
-    scores = bm25_scores(query, scoped_chunks)
-    ranked_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    return {
-        chunk_id: score
-        for chunk_id, score in ranked_scores[: max(1, settings.bm25_candidate_limit)]
-        if score > 0
-    }
+    query_tokens = tokenize(query)
+    documents = [tokenize(chunk.content) for chunk in chunks]
 
-
-def rerank_candidates(
-    query: str,
-    candidates: list[RagChunk],
-) -> dict[int, float]:
-    if not candidates:
+    if not query_tokens or not documents:
         return {}
 
-    reranker = get_reranker_model()
-    scores = reranker.predict([(query, chunk.content) for chunk in candidates])
-    return {
-        chunk.id: float(score)
-        for chunk, score in zip(candidates, scores, strict=True)
-    }
+    average_length = (
+        sum(len(document) for document in documents)
+        / len(documents)
+    )
+    document_frequency: Counter[str] = Counter()
+
+    for document in documents:
+        document_frequency.update(set(document))
+
+    scores: dict[int, float] = {}
+    total_documents = len(documents)
+    k1 = 1.5
+    b = 0.75
+
+    for chunk, document in zip(chunks, documents, strict=True):
+        frequencies = Counter(document)
+        score = 0.0
+
+        for term in query_tokens:
+            frequency = frequencies[term]
+            if frequency == 0:
+                continue
+
+            df = document_frequency[term]
+            idf = math.log(
+                1 + (total_documents - df + 0.5) / (df + 0.5)
+            )
+            denominator = frequency + k1 * (
+                1 - b + b * len(document) / average_length
+            )
+            score += idf * frequency * (k1 + 1) / denominator
+
+        scores[chunk.id] = score
+
+    return scores
+
+# vector, RRF, Reranker
+@lru_cache(maxsize=1)
+def get_reranker() -> CrossEncoder:
+    return CrossEncoder(settings.reranker_model)
 
 
+def reciprocal_rank_fusion(
+    vector_ids: list[int],
+    bm25_ids: list[int],
+) -> dict[int, float]:
+    scores: dict[int, float] = {}
+
+    for ranked_ids in (vector_ids, bm25_ids):
+        for rank, chunk_id in enumerate(ranked_ids, start=1):
+            scores[chunk_id] = (
+                scores.get(chunk_id, 0.0)
+                + 1 / (RRF_K + rank)
+            )
+
+    return scores
+
+# retrieval
 def retrieve_rag_chunks(
     db: Session,
     current_user_id: int,
     payload: RagRetrieveRequest,
 ) -> RagRetrieveResponse:
-    apply_scope_access_check(db, current_user_id, payload)
+    check_scope_access(db, current_user_id, payload)
 
-    scoped_chunks = get_scoped_chunks(db, payload)
+    scoped_statement = apply_scope(select(RagChunk), payload)
+    scoped_chunks = list(db.scalars(scoped_statement).all())
     chunks_by_id = {chunk.id: chunk for chunk in scoped_chunks}
 
-    vector_candidates = get_vector_candidates(db, payload)
-    bm25_candidates = get_bm25_candidates(payload.query, scoped_chunks)
+    query_vector = create_embeddings(payload.query)[0]
+    distance = RagChunk.embedding.cosine_distance(query_vector)
 
-    candidate_ids = list(
-        dict.fromkeys(
-            [
-                *vector_candidates.keys(),
-                *bm25_candidates.keys(),
-            ]
-        )
+    vector_statement = apply_scope(
+        select(RagChunk, distance.label("distance"))
+        .where(RagChunk.embedding.is_not(None))
+        .order_by(distance.asc())
+        .limit(settings.retrieval_candidate_limit),
+        payload,
     )
+    vector_rows = db.execute(vector_statement).all()
+    vector_ids = [chunk.id for chunk, _ in vector_rows]
+    distances = {
+        chunk.id: float(value)
+        for chunk, value in vector_rows
+    }
+
+    bm25_scores = calculate_bm25(payload.query, scoped_chunks)
+    bm25_ids = [
+        chunk_id
+        for chunk_id, score in sorted(
+            bm25_scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if score > 0
+    ][:settings.bm25_candidate_limit]
+
+    rrf_scores = reciprocal_rank_fusion(vector_ids, bm25_ids)
+    candidate_ids = sorted(
+        rrf_scores,
+        key=rrf_scores.get,
+        reverse=True,
+    )[:settings.retrieval_candidate_limit]
 
     candidates = [
         chunks_by_id[chunk_id]
@@ -205,13 +190,23 @@ def retrieve_rag_chunks(
         if chunk_id in chunks_by_id
     ]
 
-    reranker_scores = rerank_candidates(payload.query, candidates)
+    rerank_values = get_reranker().predict(
+        [(payload.query, chunk.content) for chunk in candidates]
+    )
+    rerank_scores = {
+        chunk.id: float(score)
+        for chunk, score in zip(
+            candidates,
+            rerank_values,
+            strict=True,
+        )
+    }
 
-    ranked_candidates = sorted(
+    ranked = sorted(
         candidates,
-        key=lambda chunk: reranker_scores.get(chunk.id, float("-inf")),
+        key=lambda chunk: rerank_scores[chunk.id],
         reverse=True,
-    )[: payload.top_k]
+    )[:payload.top_k]
 
     return RagRetrieveResponse(
         query=payload.query,
@@ -233,13 +228,10 @@ def retrieve_rag_chunks(
                 ),
                 chunk_index=chunk.chunk_index,
                 content=chunk.content,
-                distance=vector_candidates.get(
-                    chunk.id,
-                    (chunk, None),
-                )[1],
-                bm25_score=bm25_candidates.get(chunk.id),
-                rerank_score=reranker_scores.get(chunk.id),
+                distance=distances.get(chunk.id),
+                bm25_score=bm25_scores.get(chunk.id),
+                rerank_score=rerank_scores.get(chunk.id),
             )
-            for chunk in ranked_candidates
+            for chunk in ranked
         ],
     )

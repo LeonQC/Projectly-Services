@@ -15,7 +15,11 @@ from app.models.project import (
     CardMember,
     Epic,
     Project,
+    RagChunk,
     Sprint,
+    AttachmentDocument,
+    GitHubEvent,
+    RagIngestionJob,
 )
 from app.models.workspace import Workspace
 from app.schemas.card import (
@@ -28,7 +32,10 @@ from app.schemas.card import (
 from app.services.activities import create_card_activity
 from app.services.projects import ensure_project_access
 from app.services.search_events import publish_search_event
-
+from app.services.rag_events import (
+    publish_rag_source_delete,
+    publish_rag_source_upsert,
+)
 
 def build_card_display_id(db: Session, card: Card) -> str:
     statement = (
@@ -216,6 +223,7 @@ def create_card(
     db.refresh(card)
 
     publish_search_event("card.created", {"card_id": card.id})
+    publish_rag_source_upsert("card", card.id)
 
     return card
 
@@ -287,6 +295,7 @@ def update_card(
 
     if changed_fields:
         publish_search_event("card.updated", {"card_id": card.id})
+        publish_rag_source_upsert("card", card.id)
 
     return card
 
@@ -355,6 +364,7 @@ def move_card(
 
     if changed_fields:
         publish_search_event("card.moved", {"card_id": card.id})
+        publish_rag_source_upsert("card", card.id)
 
     return card
 
@@ -438,6 +448,7 @@ def archive_card(
     db.refresh(card)
 
     publish_search_event("card.archived", {"card_id": card.id})
+    publish_rag_source_upsert("card", card.id)
 
 
 def restore_card(
@@ -478,6 +489,7 @@ def restore_card(
     db.refresh(card)
 
     publish_search_event("card.restored", {"card_id": card.id})
+    publish_rag_source_upsert("card", card.id)
 
     return card
 
@@ -488,10 +500,33 @@ def permanently_delete_card_records(
 ) -> None:
     if not card_ids:
         return
+    db.execute(
+        delete(RagChunk).where(
+            RagChunk.card_id.in_(card_ids)
+        )
+    )
+
+    db.execute(
+        delete(RagIngestionJob).where(
+            RagIngestionJob.card_id.in_(card_ids)
+        )
+    )
+
+    db.execute(
+        delete(AttachmentDocument).where(
+            AttachmentDocument.card_id.in_(card_ids)
+        )
+    )
 
     db.execute(
         delete(CardAttachment).where(
             CardAttachment.card_id.in_(card_ids)
+        )
+    )
+
+    db.execute(
+        delete(GitHubEvent).where(
+            GitHubEvent.card_id.in_(card_ids)
         )
     )
 
@@ -574,3 +609,4 @@ def permanently_delete_card(
     db.commit()
 
     publish_search_event("card.deleted", {"card_id": card_id})
+    publish_rag_source_delete("card", card.id)

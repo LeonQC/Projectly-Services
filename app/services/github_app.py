@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.models.project import Card, CardGitHubLink, GitHubAppInstallation, GitHubEvent, Project
 from app.models.workspace import Workspace
 from app.services.search_events import publish_search_event
-
+from app.services.rag_events import publish_rag_source_upsert
 
 CARD_REFERENCE_PATTERN = re.compile(
     r"(?:\bcard\s*[-#:]?\s*|\bprojectly\s*[-#]\s*|#card\s*[-#:]?\s*)(\d+)",
@@ -324,7 +324,17 @@ def store_github_events(
         db.commit()
         for github_event in events:
             db.refresh(github_event)
-            publish_search_event("github_event.created", {"github_event_id": github_event.id})
+
+            publish_search_event(
+                "github_event.created",
+                {"github_event_id": github_event.id},
+            )
+
+            if github_event.card_id is not None:
+                publish_rag_source_upsert(
+                    "github_event",
+                    github_event.id,
+                )
     return events
 
 
